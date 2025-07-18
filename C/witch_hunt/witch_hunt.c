@@ -449,7 +449,7 @@ int print_title_page(PLAYER *p)
    printf("The swamp(@) means witch is close, but beware of poisonous snakes.\n");
    printf("Tainted land(#) is the witch's home. Watch out! She will attack you!\n\n");
 
-   printf("Look for new mob members(&) to join you...\n");
+   printf("Look for new mob members(A) to join you...\n");
    printf("Look for additional pitchforks(Y) to fend off goblins...\n");
    printf("Look for additional torches(i) to help you see...\n");
    printf("Look for additional mushrooms(m) to cure poison...\n");
@@ -479,7 +479,7 @@ int print_forest (ROWS_OF_COLS *f, ROWS_OF_COLS *r, PLAYER *p)
             switch (f[i][j])
             {
                case RECRUIT :
-                  printf("&");
+                  printf("A");
                   printf("%c[0m",0x1B);
                   break;
                case PITCHFORK :
@@ -525,7 +525,7 @@ int print_forest (ROWS_OF_COLS *f, ROWS_OF_COLS *r, PLAYER *p)
 
    printf("Score: %d, Witches found: %d, Witches left: %d\n", 
       p->score, p->witches_found, p->witches_available - p->witches_found);
-   printf("Resources: %d mobsters(&), %d torches(i), %d pitchforks(Y), %d mushrooms(m)\n", 
+   printf("Resources: %d mobsters(A), %d torches(i), %d pitchforks(Y), %d mushrooms(m)\n", 
       p->mobsters, p->torches, p->pitchforks, p->mushrooms);
    printf("Actions: [w]up [s]down [a]left [d]right [t]light a torch\n");
  
