@@ -43,7 +43,7 @@ to the **Golden Castle** (your starting room).
 | Forgotten Shrine | **Locked** (Red Key required); Yellow Key |
 | Maze of Thorns | Bat territory; winding wall maze |
 | Swamp Chamber | Magic Bridge; crossroads room |
-| Dragon Tower | Yorgle lurks here |
+| Dragon Tower | Yorgle lurks; corner-tower layout, open in all directions |
 | Throne Room | **Locked** (Yellow Key required) |
 | Crypt of Ages | Enchanted Chalice; Grundle the green dragon |
 
@@ -51,35 +51,34 @@ to the **Golden Castle** (your starting room).
 
 | Item | Description |
 |------|-------------|
-| Magic Sword | Carry it to kill dragons on contact, or press S to strike |
+| Magic Sword | Carry it to kill dragons on contact, or press S to strike at range |
 | Blue Key | Unlocks the Dark Dungeon |
 | Red Key | Unlocks the Forgotten Shrine |
 | Yellow Key | Unlocks the Throne Room |
-| Magic Bridge | Drop it next to a wall (SPACE) to create a passage through it |
+| Magic Bridge | Drop next to a wall (SPACE) to create a passage through it |
 | Enchanted Chalice | Bring this to the Golden Castle to win |
 
 ### Magic Bridge
 
-The bridge lets you pass through walls:
+The bridge lets you pass through interior walls:
 
-1. Pick it up with **Space** (it ignores auto-pickup so it stays put until grabbed manually)
-2. Carry it to a wall and press **Space** to drop it in place
+1. Press **Space** near it to pick it up (it ignores auto-pickup so it stays put until grabbed manually)
+2. Carry it to a wall and press **Space** to drop it in place — icon looks like `] [`
 3. Pick up a different item, then walk through the wall where the bridge sits
 4. Press **Space** near the bridge again to retrieve and reuse it
 
-This is especially useful for reaching items that spawn inside enclosed wall sections.
+Especially useful for reaching items that spawn inside enclosed wall sections.
 
 ## Enemies
 
 | Enemy | Color | HP | Behaviour |
 |-------|-------|----|-----------|
-| Grundle Bat (×2) | Purple | 1 | Chases player, steals carried item on contact, flees to another room |
-| Yorgle | Yellow | 3 | Slow dragon; chases and kills on contact (unless you have sword) |
-| Grundle | Green | 2 | Medium dragon |
+| Grundle Bat (×2) | Purple | 1 | Chases player, steals carried item on contact, flees to another room, randomly drops after a few seconds |
+| Yorgle | Yellow | 3 | Slow dragon; chases and kills on contact (sword required to survive) |
+| Grundle | Green | 2 | Medium-speed dragon |
 | Rhindle | Red | 1 | Fast dragon |
 
-Bats spawn far from your entry point when you enter their room, giving you time to react.
-Bats will randomly drop stolen items after a few seconds.
+Bats always spawn far from your entry point when you enter their room.
 
 ## Sound Effects
 

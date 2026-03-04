@@ -164,8 +164,9 @@ ROOM_DEFS = {
                    _wall(6,2,4,2),_wall(6,8,4,2)],
             exits=dict(W=6, N=4, E=10), items=['bridge'], lock=None),
     8: dict(name='Dragon Tower',    bg='#3c140a',
-            walls=[_wall(4,1,8,1),_wall(4,10,8,1),_wall(4,1,1,9),_wall(11,1,1,9),
-                   _wall(6,4,4,1),_wall(6,7,4,1)],
+            walls=[_wall(1,1,2,2),_wall(13,1,2,2),   # corner towers top
+                   _wall(1,9,2,2),_wall(13,9,2,2),   # corner towers bottom
+                   _wall(6,4,4,1),_wall(6,7,4,1)],   # interior barriers
             exits=dict(S=5, E=9), items=[], lock=None),
     9: dict(name='Throne Room',     bg='#32280a',
             walls=[_wall(3,3,2,2),_wall(11,3,2,2),_wall(3,7,2,2),_wall(11,7,2,2),
@@ -491,18 +492,19 @@ class Renderer:
             self.line(x, y+sz//4, x+sz//5, y+sz//4, fill=c, width=3)
             self.line(x, y+sz//3, x+sz//5, y+sz//3, fill=c, width=3)
         elif iid == 'bridge':
-            # Looks like "] [" — two bracket pillars with a platform between
-            sz = 24
-            # Left bracket  ]
-            self.line(x-sz, y-sz//2, x-sz, y+sz//2, fill=c, width=4)
-            self.line(x-sz, y-sz//2, x-sz//3, y-sz//2, fill=c, width=4)
-            self.line(x-sz, y+sz//2, x-sz//3, y+sz//2, fill=c, width=4)
-            # Right bracket  [
-            self.line(x+sz, y-sz//2, x+sz, y+sz//2, fill=c, width=4)
-            self.line(x+sz, y-sz//2, x+sz//3, y-sz//2, fill=c, width=4)
-            self.line(x+sz, y+sz//2, x+sz//3, y+sz//2, fill=c, width=4)
-            # Platform between them
-            self.line(x-sz//3, y, x+sz//3, y, fill=c, width=4)
+            # ] [ — left bracket serifs point LEFT (outward), right bracket serifs point RIGHT
+            bar  = 28   # distance of each vertical bar from centre
+            h    = 24   # half bracket height
+            arm  = 16   # serif arm length (pointing outward)
+            lk   = 5    # line width
+            # Left bracket ]  — bar at x-bar, serifs extend further LEFT
+            self.line(x-bar,       y-h,   x-bar,       y+h,   fill=c, width=lk)
+            self.line(x-bar,       y-h,   x-bar-arm,   y-h,   fill=c, width=lk)
+            self.line(x-bar,       y+h,   x-bar-arm,   y+h,   fill=c, width=lk)
+            # Right bracket [ — bar at x+bar, serifs extend further RIGHT
+            self.line(x+bar,       y-h,   x+bar,       y+h,   fill=c, width=lk)
+            self.line(x+bar,       y-h,   x+bar+arm,   y-h,   fill=c, width=lk)
+            self.line(x+bar,       y+h,   x+bar+arm,   y+h,   fill=c, width=lk)
 
     def draw_dragon(self, x, y, color, frame):
         f = frame % 2
