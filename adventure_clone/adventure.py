@@ -170,7 +170,8 @@ ROOM_DEFS = {
             exits=dict(S=5, E=9), items=[], lock=None),
     9: dict(name='Throne Room',     bg='#32280a',
             walls=[_wall(3,3,2,2),_wall(11,3,2,2),_wall(3,7,2,2),_wall(11,7,2,2),
-                   _wall(6,1,4,1),_wall(6,10,4,1)],
+                   _wall(4,1,2,1),_wall(10,1,2,1),    # top walls, gap left for N exit
+                   _wall(4,10,2,1),_wall(10,10,2,1)], # bottom walls, gap left for S exit
             exits=dict(W=8, N=0, S=10), items=[], lock='yellow_key'),
    10: dict(name='Crypt of Ages',   bg='#191923',
             walls=[_wall(2,2,12,1),_wall(2,9,12,1),_wall(2,2,1,7),_wall(13,2,1,7),_wall(5,5,6,2)],
@@ -549,6 +550,38 @@ class Renderer:
         for wx1,wy1,wx2,wy2 in walls:
             self.rect(wx1,wy1,wx2,wy2, fill=C_GRAY, outline=C_WHITE)
 
+    def draw_door(self, direction, color):
+        """Draw a coloured locked door in the exit gap for the given direction."""
+        cx, cy = W // 2, H // 2
+        gap = 3 * TILE
+        dark = '#000000'
+        if direction == 'N':
+            x1, y1, x2, y2 = cx - gap//2, 0,        cx + gap//2, TILE
+        elif direction == 'S':
+            x1, y1, x2, y2 = cx - gap//2, H - TILE,  cx + gap//2, H
+        elif direction == 'E':
+            x1, y1, x2, y2 = W - TILE,   cy - gap//2, W,          cy + gap//2
+        elif direction == 'W':
+            x1, y1, x2, y2 = 0,          cy - gap//2, TILE,        cy + gap//2
+        # Door fill + border
+        self.rect(x1, y1, x2, y2, fill=color, outline=dark)
+        # Door planks (lines across the short axis)
+        dw, dh = x2 - x1, y2 - y1
+        if dw >= dh:   # horizontal door — vertical plank lines
+            n = 5
+            for i in range(1, n):
+                lx = x1 + dw * i // n
+                self.line(lx, y1, lx, y2, fill=dark, width=1)
+        else:          # vertical door — horizontal plank lines
+            n = 5
+            for i in range(1, n):
+                ly = y1 + dh * i // n
+                self.line(x1, ly, x2, ly, fill=dark, width=1)
+        # Keyhole: circle + slot at centre
+        kx, ky = (x1 + x2) // 2, (y1 + y2) // 2
+        self.circle(kx, ky - 5, 7, fill=dark)
+        self.rect(kx - 4, ky - 2, kx + 4, ky + 10, fill=dark, outline='')
+
     def draw_enemy(self, enemy):
         if not enemy.alive: return
         now = time.time()
@@ -617,6 +650,7 @@ class Game:
         self.deaths = 0
         self.won = False
         self.win_time = None
+        self.unlocked_rooms = set()   # rooms whose lock has been permanently opened
 
         # Items
         self.items = {}
@@ -860,7 +894,7 @@ class Game:
         target_rd = ROOM_DEFS[target_id]
         lock = target_rd.get('lock')
 
-        if lock:
+        if lock and target_id not in self.unlocked_rooms:
             p = self.player
             if not (p.carrying and p.carrying.id == lock):
                 needed = ITEM_DEFS[lock]['name']
@@ -871,6 +905,10 @@ class Game:
                 elif direction == 'E': self.player.x -= 12
                 elif direction == 'W': self.player.x += 12
                 return
+            # First time through — permanently unlock
+            self.unlocked_rooms.add(target_id)
+            play_sfx('unlock')
+            self.msgs.add(f'{target_rd["name"]} unlocked!', C_GREEN, 2.0)
 
         play_sfx('portal')
         p = self.player
@@ -929,6 +967,12 @@ class Game:
         border_walls = build_border_walls(rd['exits'])
         r.draw_walls(border_walls)
         r.draw_walls(rd['walls'])
+
+        # Colour-coded locked doors over exit gaps (hidden once unlocked)
+        for direction, target_id in rd['exits'].items():
+            lock = ROOM_DEFS[target_id].get('lock')
+            if lock and target_id not in self.unlocked_rooms:
+                r.draw_door(direction, ITEM_DEFS[lock]['color'])
 
         # Floor items
         for item in self._floor_items():

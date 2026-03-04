@@ -44,7 +44,7 @@ to the **Golden Castle** (your starting room).
 | Maze of Thorns | Bat territory; winding wall maze |
 | Swamp Chamber | Magic Bridge; crossroads room |
 | Dragon Tower | Yorgle lurks; corner-tower layout, open in all directions |
-| Throne Room | **Locked** (Yellow Key required) |
+| Throne Room | **Locked** (Yellow Key required); connects to Golden Castle (N) and Crypt of Ages (S) |
 | Crypt of Ages | Enchanted Chalice; Grundle the green dragon |
 
 ## Items
@@ -57,6 +57,13 @@ to the **Golden Castle** (your starting room).
 | Yellow Key | Unlocks the Throne Room |
 | Magic Bridge | Drop next to a wall (SPACE) to create a passage through it |
 | Enchanted Chalice | Bring this to the Golden Castle to win |
+
+### Locked Doors
+
+Locked exits are shown as colour-coded doors matching the required key. Once you
+pass through a door with the correct key, it unlocks **permanently** — no need to
+carry the key again on return visits. The door graphic disappears to show the
+passage is open.
 
 ### Magic Bridge
 
