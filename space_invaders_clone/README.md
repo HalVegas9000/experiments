@@ -29,8 +29,9 @@ python3 hal_invaders.py
 - **5×11 invader grid** — three alien types, two-frame animation, colour-coded by row
 - **Classic dum-dum march music** — four bass notes that cycle and speed up as invaders are eliminated
 - **Invaders get faster** as their numbers drop
-- **Four destructible shield bunkers** — each block takes two hits; fast bullets use swept collision so nothing is indestructible
+- **Four destructible shield bunkers** — each block is destroyed in one hit; fast bullets use swept collision so no block is indestructible
 - **UFO mystery ship** flies across the top with a warbling sound and drops slow orange bombs
+- **2X rapid-fire power-up** — a cyan capsule drifts down the screen; shoot it for double fire rate for 10 seconds
 - **Explosions** — expanding burst with radiating sparks on every kill
 - **Multi-level** — clear the grid and a fresh wave appears; lives and score carry over
 - **Hi-score** tracking across rounds
@@ -53,6 +54,7 @@ All sounds are synthesised at startup and written to a temporary directory — n
 | Player laser | High-to-low frequency sweep |
 | Enemy laser | Square-wave buzz |
 | UFO bomb | Low square-wave thud |
+| Power-up collect | Ascending arpeggio |
 | Explosion | Noise burst with decay |
 | Player death | Descending sweep + noise |
 | March steps | Four low square-wave pulses |

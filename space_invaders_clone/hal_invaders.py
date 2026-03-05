@@ -510,7 +510,7 @@ class SpaceInvaders:
                         fill=SHD_COL, outline='', tags='shield')
                     self.shields.append({'x1': bx, 'y1': by,
                                          'x2': bx + BLOCK - 1, 'y2': by + BLOCK - 1,
-                                         'id': bid, 'alive': True, 'hp': 2})
+                                         'id': bid, 'alive': True, 'hp': 1})
 
     # ── HUD ───────────────────────────────────────────────────────────
     def _draw_hud(self):
@@ -850,12 +850,8 @@ class SpaceInvaders:
             # y overlap with swept segment
             if y_hi < sh['y1'] or y_lo > sh['y2']:
                 continue
-            sh['hp'] -= 1
-            if sh['hp'] <= 0:
-                sh['alive'] = False
-                self.canvas.delete(sh['id'])
-            else:
-                self.canvas.itemconfigure(sh['id'], fill="#005522")
+            sh['alive'] = False
+            self.canvas.delete(sh['id'])
             return True
         return False
 
