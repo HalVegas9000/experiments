@@ -1,0 +1,1337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arcane Duel</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #0d0d1a;
+  color: #c8b89a;
+  font-family: 'Palatino Linotype', Palatino, Georgia, serif;
+  height: 100vh;
+  display: grid;
+  grid-template-columns: 1fr 260px;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ── BOARD ── */
+#board {
+  display: grid;
+  grid-template-rows: 52px 1fr 52px 1fr 258px 48px;
+  gap: 3px;
+  padding: 6px;
+  min-height: 0;
+}
+
+/* ── INFO BARS ── */
+.player-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 14px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.08);
+  flex-shrink: 0;
+  cursor: default;
+}
+.player-bar.ai-bar:hover { border-color: rgba(255,150,150,0.3); }
+.player-bar .name { font-weight: bold; font-size: 0.95em; }
+.player-bar .life { color: #ff7b7b; font-size: 1.15em; font-weight: bold; }
+.player-bar .mana-info { color: #7bb5ff; font-size: 0.9em; }
+.player-bar .counts { color: #888; font-size: 0.82em; }
+.target-hint { font-size: 0.75em; color: #ffcc44; display: none; }
+
+/* ── BATTLEFIELDS ── */
+.battlefield {
+  background: rgba(0, 60, 0, 0.12);
+  border: 1px dashed rgba(100,200,100,0.15);
+  border-radius: 8px;
+  padding: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 7px;
+  overflow-y: auto;
+  min-height: 0;
+  position: relative;
+}
+.battlefield::after {
+  content: attr(data-label);
+  position: absolute;
+  bottom: 4px;
+  right: 8px;
+  font-size: 0.65em;
+  color: rgba(255,255,255,0.18);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  pointer-events: none;
+}
+#ai-battlefield { border-color: rgba(255,100,100,0.15); }
+
+/* ── CONTROLS BAR ── */
+#controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 6px;
+  background: rgba(0,0,0,0.3);
+  border-radius: 8px;
+  border-top: 1px solid rgba(255,100,100,0.2);
+  border-bottom: 1px solid rgba(100,100,255,0.2);
+  flex-shrink: 0;
+}
+#phase-label {
+  font-size: 0.72em;
+  color: #ffd700;
+  letter-spacing: 1px;
+  white-space: nowrap;
+  min-width: 110px;
+}
+#status-msg {
+  flex: 1;
+  font-size: 0.78em;
+  color: #aaa;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── HAND ZONE ── */
+#hand-zone {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding: 5px 6px;
+  align-items: center;
+  background: rgba(0,0,0,0.2);
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.06);
+  flex-shrink: 0;
+  scrollbar-width: thin;
+}
+
+/* ── BUTTONS ── */
+button {
+  padding: 6px 13px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.82em;
+  font-weight: bold;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+button:disabled { opacity: 0.35; cursor: not-allowed; }
+#btn-attack  { background: #7a1010; color: #ffcccc; border: 1px solid #aa3333; }
+#btn-attack:hover:not(:disabled)  { background: #aa1515; }
+#btn-end     { background: #1a3d6e; color: #aaddff; border: 1px solid #2255aa; }
+#btn-end:hover:not(:disabled)     { background: #2255aa; }
+#btn-confirm { background: #1a5a1a; color: #aaffaa; border: 1px solid #2a8a2a; }
+#btn-confirm:hover:not(:disabled) { background: #2a8a2a; }
+#btn-cancel  { background: #3a3a3a; color: #ccc; border: 1px solid #555; }
+#btn-cancel:hover:not(:disabled)  { background: #555; }
+
+/* ── CARDS ── */
+.card {
+  width: 155px;
+  min-width: 155px;
+  height: 214px;
+  border-radius: 10px;
+  border: 2px solid rgba(255,255,255,0.22);
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+  transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s, opacity 0.12s;
+  position: relative;
+  font-size: 1.05em;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.card:hover { transform: translateY(-5px); z-index: 10; }
+.card.tapped { opacity: 0.6; border-color: rgba(255,255,255,0.08); }
+.card.tapped::before {
+  content: 'TAPPED';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%,-50%) rotate(-30deg);
+  font-size: 0.7em;
+  color: rgba(255,255,255,0.4);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 5;
+}
+.card.selected    { border-color: #ffd700; box-shadow: 0 0 10px #ffd700; transform: translateY(-6px); }
+.card.attacking   { border-color: #ff4444; box-shadow: 0 0 8px #ff4444; }
+.card.blocking    { border-color: #44aaff; box-shadow: 0 0 8px #44aaff; }
+.card.valid-target { border-color: #44ff88; animation: pulse-green 0.7s infinite alternate; }
+.card.blocker-sel  { border-color: #66ccff; box-shadow: 0 0 10px #66ccff; transform: translateY(-5px); }
+.card.land-tapable { border-color: rgba(120,255,120,0.5); }
+
+@keyframes pulse-green {
+  from { box-shadow: 0 0 4px #44ff88; }
+  to   { box-shadow: 0 0 14px #44ff88; }
+}
+
+.card-cost {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  background: rgba(0,0,0,0.82);
+  border-radius: 50%;
+  width: 26px;
+  height: 26px;
+  font-size: 1em;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffd700;
+  z-index: 2;
+  border: 1px solid rgba(255,215,0,0.4);
+}
+.card-art {
+  font-size: 4.5em;
+  text-align: center;
+  padding: 6px 0 2px;
+  line-height: 1;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.card-name {
+  font-size: 0.88em;
+  text-align: center;
+  padding: 2px 3px;
+  font-weight: bold;
+  line-height: 1.2;
+  min-height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.card-ability {
+  text-align: center;
+  font-size: 0.75em;
+  color: #aabbff;
+  padding: 2px 2px 1px;
+  line-height: 1;
+  font-style: italic;
+}
+.card-stats {
+  text-align: center;
+  padding: 3px;
+  background: rgba(0,0,0,0.6);
+  font-size: 1em;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+.card-stats.hurt { color: #ff8888; }
+.card-sick {
+  font-size: 0.65em;
+  text-align: center;
+  color: #888;
+  padding: 2px;
+  background: rgba(0,0,0,0.45);
+}
+.card-desc {
+  font-size: 0.7em;
+  text-align: center;
+  padding: 2px 3px;
+  color: #ccc;
+  line-height: 1.2;
+}
+
+/* ── SIDEBAR / LOG ── */
+#sidebar {
+  background: rgba(0,0,0,0.45);
+  border-left: 1px solid rgba(255,255,255,0.08);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#sidebar-title {
+  padding: 10px;
+  text-align: center;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  font-size: 0.85em;
+  letter-spacing: 3px;
+  color: #9a8a6a;
+  font-variant: small-caps;
+  flex-shrink: 0;
+}
+#game-log {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 8px;
+  font-size: 0.76em;
+  line-height: 1.65;
+  scrollbar-width: thin;
+}
+.log-entry { padding: 1px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.log-player  { color: #88bbff; }
+.log-ai      { color: #ff9999; }
+.log-combat  { color: #ffbb55; }
+.log-system  { color: #888; font-style: italic; }
+.log-win     { color: #ffd700; font-weight: bold; font-size: 1.05em; }
+
+/* ── OVERLAY ── */
+#overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.82);
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 18px;
+}
+#overlay.active { display: flex; }
+#overlay-title { font-size: 3.2em; text-shadow: 0 0 30px currentColor; }
+#overlay-msg { font-size: 1em; color: #aaa; }
+#overlay button { padding: 12px 36px; font-size: 1em; background: #2a4a2a; color: #aaffaa; border: 1px solid #4a8a4a; }
+#overlay button:hover { background: #3a6a3a; }
+
+/* ── TOOLTIP ── */
+#tooltip {
+  position: fixed;
+  background: #1a1a2e;
+  border: 1px solid #555;
+  border-radius: 7px;
+  padding: 8px 10px;
+  font-size: 0.8em;
+  line-height: 1.5;
+  pointer-events: none;
+  z-index: 300;
+  max-width: 200px;
+  display: none;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+}
+</style>
+</head>
+<body>
+
+<div id="board">
+
+  <!-- AI Info -->
+  <div class="player-bar ai-bar" id="ai-bar">
+    <span class="name">&#x1F52E; Arcane AI</span>
+    <span class="life" id="ai-life">&#x2764; 20</span>
+    <span class="mana-info" id="ai-mana">&#x1F48E; 0/0</span>
+    <span class="counts" id="ai-counts">Hand: 7 &nbsp;|&nbsp; Deck: 33 &nbsp;|&nbsp; &#x2620; 0</span>
+    <span class="target-hint" id="ai-target-hint">[Click to target]</span>
+  </div>
+
+  <!-- AI Battlefield -->
+  <div class="battlefield" id="ai-battlefield" data-label="Opponent's Field"></div>
+
+  <!-- Controls -->
+  <div id="controls">
+    <span id="phase-label">YOUR TURN</span>
+    <span id="status-msg">Tap lands for mana, then play cards from your hand.</span>
+    <button id="btn-attack"  onclick="startAttack()">&#x2694; Attack</button>
+    <button id="btn-confirm" onclick="confirmAction()" style="display:none">&#x2713; Confirm</button>
+    <button id="btn-cancel"  onclick="cancelAction()" style="display:none">&#x2717; Cancel</button>
+    <button id="btn-end"     onclick="endTurn()">End Turn &#x25B6;</button>
+  </div>
+
+  <!-- Player Battlefield -->
+  <div class="battlefield" id="player-battlefield" data-label="Your Field"></div>
+
+  <!-- Player Hand -->
+  <div id="hand-zone"></div>
+
+  <!-- Player Info -->
+  <div class="player-bar" id="player-bar">
+    <span class="name">&#x1F9D9; You</span>
+    <span class="life" id="player-life">&#x2764; 20</span>
+    <span class="mana-info" id="player-mana">&#x1F48E; 0/0</span>
+    <span class="counts" id="player-counts">Deck: 33 &nbsp;|&nbsp; &#x2620; 0</span>
+  </div>
+
+</div>
+
+<!-- Sidebar / Log -->
+<div id="sidebar">
+  <div id="sidebar-title">&#x2694; Arcane Duel &#x2694;</div>
+  <div id="game-log"></div>
+</div>
+
+<!-- End overlay -->
+<div id="overlay">
+  <div id="overlay-title">Victory!</div>
+  <div id="overlay-msg"></div>
+  <button onclick="newGame()">Play Again</button>
+</div>
+
+<div id="tooltip"></div>
+
+<script>
+'use strict';
+
+// ============================================================
+// CARD DATABASE
+// ============================================================
+const DB = {
+  // Lands
+  forest:    { name:'Forest',         type:'land',    cost:0, art:'&#x1F332;', bg:'#0d2e0d' },
+  mountain:  { name:'Mountain',       type:'land',    cost:0, art:'&#x26F0;',  bg:'#2e1508' },
+  plains:    { name:'Plains',         type:'land',    cost:0, art:'&#x2600;',  bg:'#2e2b08' },
+  swamp:     { name:'Swamp',          type:'land',    cost:0, art:'&#x1F4A7;', bg:'#0d0d2e' },
+  island:    { name:'Island',         type:'land',    cost:0, art:'&#x1F30A;', bg:'#08182e' },
+
+  // Creatures
+  goblin:    { name:'Goblin Scout',   type:'creature', cost:1, power:1, toughness:1, art:'&#x1F353;', bg:'#2e0a0a', abilities:[] },
+  wolf:      { name:'Forest Wolf',    type:'creature', cost:2, power:2, toughness:2, art:'&#x1F966;', bg:'#0d2e0d', abilities:[] },
+  golem:     { name:'Iron Golem',     type:'creature', cost:3, power:2, toughness:4, art:'&#x1F96B;', bg:'#1a1a2e', abilities:[] },
+  giant:     { name:'Hill Giant',     type:'creature', cost:3, power:3, toughness:3, art:'&#x1F354;', bg:'#2e1508', abilities:[] },
+  drake:     { name:'Fire Drake',     type:'creature', cost:4, power:4, toughness:2, art:'&#x1F336;', bg:'#2e0a00', abilities:['flying'] },
+  elephant:  { name:'War Elephant',   type:'creature', cost:4, power:3, toughness:5, art:'&#x1F356;', bg:'#1a1a1a', abilities:[] },
+  serpent:   { name:'Sky Serpent',    type:'creature', cost:5, power:4, toughness:4, art:'&#x1F35C;', bg:'#08102e', abilities:['flying'] },
+  colossus:  { name:'Stone Colossus', type:'creature', cost:6, power:6, toughness:6, art:'&#x1F382;', bg:'#111111', abilities:[] },
+
+  // Spells
+  bolt:      { name:'Lightning Bolt', type:'spell', cost:1, art:'&#x26A1;', bg:'#2e2600',
+               target:'any',          effect:'damage',     amount:3, desc:'Deal 3 damage to any target.' },
+  salve:     { name:'Healing Salve',  type:'spell', cost:1, art:'&#x1F49A;', bg:'#082e08',
+               target:'none',         effect:'heal',       amount:4, desc:'Gain 4 life.' },
+  ritual:    { name:'Dark Ritual',    type:'spell', cost:1, art:'&#x1F56F;', bg:'#18003a',
+               target:'none',         effect:'mana',       amount:3, desc:'Add 3 mana to your pool.' },
+  growth:    { name:'Giant Growth',   type:'spell', cost:1, art:'&#x1F33F;', bg:'#003a00',
+               target:'creature_own', effect:'pump',       amount:3, desc:'Target creature gets +3/+3 this turn.' },
+  scroll:    { name:'Mystic Scroll',  type:'spell', cost:2, art:'&#x1F4DC;', bg:'#1a003a',
+               target:'none',         effect:'draw',       amount:2, desc:'Draw 2 cards.' },
+  plague:    { name:'Plague Cloud',   type:'spell', cost:3, art:'&#x2601;',  bg:'#1a2600',
+               target:'none',         effect:'damage_all', amount:1, desc:'Deal 1 damage to all creatures.' },
+  fireball:  { name:'Fireball',       type:'spell', cost:4, art:'&#x1F525;', bg:'#2e0800',
+               target:'any',          effect:'damage',     amount:6, desc:'Deal 6 damage to any target.' },
+  destroy:   { name:'Annihilate',     type:'spell', cost:3, art:'&#x1F480;', bg:'#0a0a0a',
+               target:'creature_any', effect:'destroy',    desc:'Destroy target creature.' },
+};
+
+// Deck recipe: [id, count]
+const DECK_RECIPE = [
+  ['forest',3],['mountain',3],['plains',3],['swamp',3],['island',4],
+  ['goblin',3],['wolf',2],['golem',2],['giant',2],['drake',2],['elephant',1],['serpent',1],['colossus',1],
+  ['bolt',3],['salve',1],['ritual',1],['growth',1],['scroll',1],['plague',1],['fireball',1],['destroy',1],
+];
+// Total: 16 lands + 14 creatures + 10 spells = 40 cards
+
+// ============================================================
+// STATE
+// ============================================================
+const PHASE = { MAIN:'main', ATTACK:'attack', BLOCK:'block', RESOLVE:'resolve', OVER:'over' };
+let uid = 0;
+
+function mkCard(id) {
+  const def = DB[id];
+  return {
+    ...def,
+    id,
+    uid: ++uid,
+    tapped: false,
+    summoningSick: false,
+    damage: 0,
+    pumpP: 0,
+    pumpT: 0,
+  };
+}
+
+function buildDeck() {
+  const deck = [];
+  for (const [id, n] of DECK_RECIPE)
+    for (let i = 0; i < n; i++) deck.push(mkCard(id));
+  // Fisher-Yates shuffle
+  for (let i = deck.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [deck[i], deck[j]] = [deck[j], deck[i]];
+  }
+  return deck;
+}
+
+let G; // game state
+
+function initGame() {
+  uid = 0;
+  G = {
+    player: { life:20, mana:0, hand:[], field:[], deck:buildDeck(), grave:[] },
+    ai:     { life:20, mana:0, hand:[], field:[], deck:buildDeck(), grave:[] },
+    turn: 'player',
+    phase: PHASE.MAIN,
+    landsPlayed: 0,
+    selectedUid: null,   // card selected in hand
+    targetMode: null,    // { uid, target }
+    attackers: [],       // uids of attacking creatures (current turn's active player)
+    // player-attack: aiBlockers[attackerUid]=blockerUid
+    // ai-attack:     playerBlockers[blockerUid]=attackerUid
+    aiBlockers: {},
+    playerBlockers: {},
+    selectedBlocker: null,
+    tempPumps: [],
+  };
+  for (let i = 0; i < 7; i++) drawCard('player');
+  for (let i = 0; i < 7; i++) drawCard('ai');
+  render();
+  log('The duel begins. You go first.', 'system');
+}
+
+// ============================================================
+// HELPERS
+// ============================================================
+function byUid(uid) {
+  for (const who of ['player','ai']) {
+    const c = G[who].field.find(c => c.uid === uid);
+    if (c) return c;
+  }
+  return null;
+}
+function ownerOf(uid) {
+  for (const who of ['player','ai'])
+    if (G[who].field.find(c => c.uid === uid) || G[who].hand.find(c => c.uid === uid))
+      return who;
+  return null;
+}
+function creatures(who) { return G[who].field.filter(c => c.type === 'creature'); }
+function lands(who)     { return G[who].field.filter(c => c.type === 'land'); }
+
+function drawCard(who) {
+  const p = G[who];
+  if (p.deck.length === 0) {
+    gameOver(who !== 'player');
+    return false;
+  }
+  p.hand.push(p.deck.pop());
+  return true;
+}
+
+function untapAll(who) { G[who].field.forEach(c => { c.tapped = false; }); }
+
+function calcMaxMana(who) { return lands(who).length; }
+
+// ============================================================
+// TURN MANAGEMENT
+// ============================================================
+function startTurn(who) {
+  G.turn = who;
+  G.phase = PHASE.MAIN;
+  G.landsPlayed = 0;
+  G.attackers = [];
+  G.aiBlockers = {};
+  G.playerBlockers = {};
+  G.selectedUid = null;
+  G.targetMode = null;
+  G.selectedBlocker = null;
+
+  // Remove temp pumps from last turn
+  for (const {uid, p, t} of G.tempPumps) {
+    const c = byUid(uid);
+    if (c) { c.pumpP -= p; c.pumpT -= t; }
+  }
+  G.tempPumps = [];
+
+  // Untap, clear damage, clear summoning sickness
+  untapAll(who);
+  G[who].field.forEach(c => {
+    if (c.type === 'creature') { c.damage = 0; c.summoningSick = false; }
+  });
+  // Also reset opponent creature damage (end of turn damage reset)
+  const opp = who === 'player' ? 'ai' : 'player';
+  G[opp].field.forEach(c => { if (c.type === 'creature') c.damage = 0; });
+
+  G[who].mana = 0;
+
+  if (!drawCard(who)) return;
+
+  if (who === 'player') {
+    log('--- Your Turn ---', 'system');
+    render();
+  } else {
+    log('--- AI Turn ---', 'system');
+    render();
+    setTimeout(runAiTurn, 500);
+  }
+}
+
+// ============================================================
+// PLAYER ACTIONS
+// ============================================================
+function tapLand(card) {
+  if (G.turn !== 'player' || G.phase !== PHASE.MAIN) return;
+  if (card.tapped) { log('That land is already tapped.', 'system'); return; }
+  card.tapped = true;
+  G.player.mana++;
+  log(`You tap ${card.name}. (${G.player.mana} mana)`, 'player');
+  render();
+}
+
+function selectHandCard(card) {
+  if (G.turn !== 'player' || G.phase !== PHASE.MAIN) return;
+
+  // Deselect
+  if (G.selectedUid === card.uid) {
+    G.selectedUid = null;
+    G.targetMode = null;
+    render();
+    return;
+  }
+
+  if (card.type === 'land') {
+    if (G.landsPlayed >= 1) { setStatus('You can only play one land per turn.'); return; }
+    playLand('player', card);
+    return;
+  }
+
+  if (G.player.mana < card.cost) {
+    setStatus(`Need ${card.cost} mana, have ${G.player.mana}. Tap more lands first.`);
+    return;
+  }
+
+  G.selectedUid = card.uid;
+
+  const def = DB[card.id];
+  if (!def.target || def.target === 'none') {
+    castCard('player', card, null);
+  } else {
+    G.targetMode = { uid: card.uid, target: def.target };
+    if (def.target === 'any') setStatus(`Select a target for ${card.name} — click a creature or the AI's life total.`);
+    else if (def.target === 'creature_any') setStatus(`Select a creature to destroy.`);
+    else if (def.target === 'creature_own') setStatus(`Select one of your creatures.`);
+    render();
+  }
+}
+
+function playLand(who, card) {
+  const p = G[who];
+  p.hand = p.hand.filter(c => c.uid !== card.uid);
+  card.tapped = false;
+  p.field.push(card);
+  G.landsPlayed++;
+  G.selectedUid = null;
+  G.targetMode = null;
+  log(`${who === 'player' ? 'You play' : 'AI plays'} ${card.name}.`, who === 'player' ? 'player' : 'ai');
+  render();
+}
+
+function castCard(who, card, target) {
+  const p = G[who];
+  p.hand = p.hand.filter(c => c.uid !== card.uid);
+  p.mana -= card.cost;
+
+  const label = who === 'player' ? 'You cast' : 'AI casts';
+  log(`${label} ${card.name}.`, who === 'player' ? 'player' : 'ai');
+
+  if (card.type === 'creature') {
+    card.summoningSick = true;
+    card.damage = 0;
+    p.field.push(card);
+  } else {
+    applyEffect(who, card, target);
+    p.grave.push(card);
+  }
+
+  G.selectedUid = null;
+  G.targetMode = null;
+  render();
+  checkWin();
+}
+
+function applyEffect(who, card, target) {
+  const opp = who === 'player' ? 'ai' : 'player';
+  switch (card.effect) {
+    case 'damage':
+      if (target === 'ai' || target === 'player') {
+        G[target].life -= card.amount;
+        log(`${card.name} deals ${card.amount} to ${target === 'player' ? 'you' : 'the AI'}. (${G[target].life} life)`, 'combat');
+      } else if (target && target.uid) {
+        dealDmg(target, card.amount, card.name);
+        cleanDead();
+      }
+      break;
+    case 'heal':
+      G[who].life += card.amount;
+      log(`${who === 'player' ? 'You gain' : 'AI gains'} ${card.amount} life. (${G[who].life})`, who === 'player' ? 'player' : 'ai');
+      break;
+    case 'mana':
+      G[who].mana += card.amount;
+      log(`${who === 'player' ? 'You add' : 'AI adds'} ${card.amount} mana to your pool.`, who === 'player' ? 'player' : 'ai');
+      break;
+    case 'pump':
+      if (target && target.uid) {
+        target.pumpP += card.amount;
+        target.pumpT += card.amount;
+        G.tempPumps.push({ uid: target.uid, p: card.amount, t: card.amount });
+        log(`${target.name} gets +${card.amount}/+${card.amount} until end of turn.`, 'combat');
+      }
+      break;
+    case 'draw':
+      for (let i = 0; i < card.amount; i++) drawCard(who);
+      log(`${who === 'player' ? 'You draw' : 'AI draws'} ${card.amount} cards.`, who === 'player' ? 'player' : 'ai');
+      break;
+    case 'damage_all':
+      log(`${card.name} deals ${card.amount} damage to all creatures.`, 'combat');
+      [...G.player.field, ...G.ai.field]
+        .filter(c => c.type === 'creature')
+        .forEach(c => dealDmg(c, card.amount, card.name));
+      cleanDead();
+      break;
+    case 'destroy':
+      if (target && target.uid) {
+        const own = ownerOf(target.uid);
+        G[own].field = G[own].field.filter(c => c.uid !== target.uid);
+        G[own].grave.push(target);
+        log(`${target.name} is destroyed!`, 'combat');
+      }
+      break;
+  }
+}
+
+function dealDmg(card, amount, source) {
+  const wasDamaged = card.damage;
+  card.damage += amount;
+  const eff = card.toughness + card.pumpT;
+  if (card.damage < eff) {
+    log(`${card.name} takes ${amount} damage (${card.damage}/${eff}).`, 'combat');
+  }
+}
+
+function cleanDead() {
+  for (const who of ['player','ai']) {
+    const dead = G[who].field.filter(c => c.type === 'creature' && c.damage >= c.toughness + c.pumpT);
+    dead.forEach(c => {
+      G[who].field = G[who].field.filter(x => x.uid !== c.uid);
+      G[who].grave.push(c);
+      log(`${c.name} is destroyed!`, 'combat');
+    });
+  }
+}
+
+// ============================================================
+// PLAYER-ATTACK COMBAT
+// ============================================================
+function startAttack() {
+  if (G.turn !== 'player' || G.phase !== PHASE.MAIN) return;
+  const avail = creatures('player').filter(c => !c.tapped && !c.summoningSick);
+  if (!avail.length) { setStatus('No creatures ready to attack (check summoning sickness / tapped).'); return; }
+  G.phase = PHASE.ATTACK;
+  G.attackers = [];
+  setStatus('Click your creatures to select attackers. Confirm when ready.');
+  render();
+}
+
+function toggleAttacker(card) {
+  if (G.phase !== PHASE.ATTACK || G.turn !== 'player') return;
+  if (card.summoningSick || card.tapped) return;
+  const i = G.attackers.indexOf(card.uid);
+  if (i >= 0) G.attackers.splice(i, 1);
+  else G.attackers.push(card.uid);
+  render();
+}
+
+function confirmAction() {
+  if (G.phase === PHASE.ATTACK) {
+    if (!G.attackers.length) { cancelAction(); return; }
+    log(`You attack with: ${G.attackers.map(u => byUid(u)?.name).join(', ')}.`, 'player');
+    assignAiBlockers();
+    resolvePvAICombat();
+  } else if (G.phase === PHASE.BLOCK) {
+    // Player done assigning blockers to AI attack
+    resolveAIvPCombat();
+  }
+}
+
+function cancelAction() {
+  G.phase = PHASE.MAIN;
+  G.attackers = [];
+  G.aiBlockers = {};
+  G.playerBlockers = {};
+  G.selectedUid = null;
+  G.targetMode = null;
+  G.selectedBlocker = null;
+  setStatus('Tap lands for mana, then play cards from your hand.');
+  render();
+}
+
+function assignAiBlockers() {
+  const atkCards = G.attackers.map(u => G.player.field.find(c => c.uid === u)).filter(Boolean);
+  const avail = creatures('ai').filter(c => !c.tapped);
+  G.aiBlockers = {};
+  const used = new Set();
+
+  // Sort attackers: dangerous first
+  const sorted = [...atkCards].sort((a,b) => (b.power+b.pumpP) - (a.power+a.pumpP));
+
+  for (const atk of sorted) {
+    const ap = atk.power + atk.pumpP;
+    const at = atk.toughness + atk.pumpT;
+    const canFly = atk.abilities?.includes('flying');
+
+    let best = null;
+    // Find ideal blocker: kills attacker and survives
+    for (const blk of avail) {
+      if (used.has(blk.uid)) continue;
+      if (canFly && !blk.abilities?.includes('flying')) continue;
+      const bp = blk.power + blk.pumpP;
+      const bt = blk.toughness + blk.pumpT;
+      if (bp >= at && bt > ap) { best = blk; break; }
+    }
+    // Fall back: any blocker that kills attacker
+    if (!best) {
+      for (const blk of avail) {
+        if (used.has(blk.uid)) continue;
+        if (canFly && !blk.abilities?.includes('flying')) continue;
+        const bp = blk.power + blk.pumpP;
+        if (bp >= at) { best = blk; break; }
+      }
+    }
+    // Desperate: block to save life
+    if (!best) {
+      const unblockedDmg = sorted
+        .filter(a => !G.aiBlockers[a.uid])
+        .reduce((s,a) => s + a.power + a.pumpP, 0);
+      if (unblockedDmg >= G.ai.life) {
+        for (const blk of avail) {
+          if (used.has(blk.uid)) continue;
+          if (canFly && !blk.abilities?.includes('flying')) continue;
+          best = blk; break;
+        }
+      }
+    }
+
+    if (best) {
+      G.aiBlockers[atk.uid] = best.uid;
+      used.add(best.uid);
+      log(`AI blocks ${atk.name} with ${best.name}.`, 'combat');
+    }
+  }
+}
+
+function resolvePvAICombat() {
+  G.phase = PHASE.RESOLVE;
+  render();
+  setTimeout(() => {
+    for (const atkUid of G.attackers) {
+      const atk = G.player.field.find(c => c.uid === atkUid);
+      if (!atk) continue;
+      const ap = atk.power + atk.pumpP;
+      const blkUid = G.aiBlockers[atkUid];
+      if (blkUid) {
+        const blk = G.ai.field.find(c => c.uid === blkUid);
+        if (blk) {
+          const bp = blk.power + blk.pumpP;
+          dealDmg(atk, bp, blk.name);
+          dealDmg(blk, ap, atk.name);
+        }
+      } else {
+        G.ai.life -= ap;
+        log(`${atk.name} deals ${ap} to the AI. (${G.ai.life} life)`, 'combat');
+      }
+      // Tap attacker
+      const atkCard = G.player.field.find(c => c.uid === atkUid);
+      if (atkCard) atkCard.tapped = true;
+    }
+    cleanDead();
+    G.attackers = [];
+    G.aiBlockers = {};
+    G.phase = PHASE.MAIN;
+    render();
+    checkWin();
+    if (G.phase !== PHASE.OVER) setStatus('Combat resolved. Play more cards or end your turn.');
+  }, 700);
+}
+
+// ============================================================
+// AI TURN
+// ============================================================
+function runAiTurn() {
+  if (G.turn !== 'ai') return;
+
+  // Tap all AI lands for mana
+  lands('ai').forEach(l => { if (!l.tapped) { l.tapped = true; G.ai.mana++; } });
+
+  // Play a land from hand
+  const handLand = G.ai.hand.find(c => c.type === 'land');
+  if (handLand && G.landsPlayed === 0) {
+    playLand('ai', handLand);
+    G.ai.mana++;
+    handLand.tapped = true;
+  }
+
+  // Cast spells/creatures greedily (most expensive affordable first)
+  let cast = true;
+  while (cast) {
+    cast = false;
+    const affordable = G.ai.hand
+      .filter(c => c.type !== 'land' && c.cost <= G.ai.mana)
+      .sort((a,b) => b.cost - a.cost);
+    const card = aiPickCard(affordable);
+    if (card) {
+      const target = aiPickTarget(card);
+      if (target !== false) {
+        castCard('ai', card, target);
+        cast = true;
+      }
+    }
+  }
+
+  render();
+  if (G.phase === PHASE.OVER) return;
+
+  // Attack
+  setTimeout(() => {
+    const atkers = creatures('ai').filter(c => !c.tapped && !c.summoningSick);
+    if (atkers.length) {
+      G.attackers = atkers.map(c => c.uid);
+      log(`AI attacks with: ${atkers.map(c => c.name).join(', ')}.`, 'ai');
+      G.phase = PHASE.BLOCK;
+      G.selectedBlocker = null;
+      G.playerBlockers = {};
+      setStatus('AI is attacking! Click your creature, then click an AI creature to assign a block. Confirm when done.');
+      render();
+    } else {
+      endAiTurn();
+    }
+  }, 600);
+}
+
+function aiPickCard(affordable) {
+  if (!affordable.length) return null;
+  const playerCrs = creatures('player');
+  // Prefer removal if player has threats
+  const removal = affordable.find(c => c.effect === 'destroy' || (c.effect === 'damage' && playerCrs.length > 0));
+  if (removal && playerCrs.length > 0) return removal;
+  const crs = affordable.filter(c => c.type === 'creature');
+  if (crs.length) return crs[0];
+  return affordable[0];
+}
+
+function aiPickTarget(card) {
+  const def = DB[card.id];
+  if (!def.target || def.target === 'none') return null;
+  const pc = creatures('player');
+  switch (def.target) {
+    case 'any':
+      if (G.player.life <= card.amount) return 'player'; // lethal
+      if (!pc.length) return 'player';
+      return pc.sort((a,b) => (b.power+b.pumpP)-(a.power+a.pumpP))[0]; // biggest threat
+    case 'creature_any':
+      if (!pc.length) return false;
+      return pc.sort((a,b) => (b.power+b.pumpP)-(a.power+a.pumpP))[0];
+    case 'creature_own':
+      const own = creatures('ai');
+      return own.length ? own.sort((a,b) => (b.power+b.pumpP)-(a.power+a.pumpP))[0] : false;
+    default:
+      return null;
+  }
+}
+
+// AI-attack / player-block resolution
+function handlePlayerBlockClick(card, who) {
+  if (G.phase !== PHASE.BLOCK || G.turn !== 'ai') return;
+
+  if (who === 'player' && card.type === 'creature' && !card.tapped) {
+    // Select as blocker
+    G.selectedBlocker = card.uid;
+    setStatus(`${card.name} selected — click an attacking AI creature to block it.`);
+    render();
+  } else if (who === 'ai' && G.attackers.includes(card.uid) && G.selectedBlocker !== null) {
+    // Assign block
+    const blocker = G.player.field.find(c => c.uid === G.selectedBlocker);
+    if (!blocker) { G.selectedBlocker = null; render(); return; }
+    // Flying check
+    if (card.abilities?.includes('flying') && !blocker.abilities?.includes('flying')) {
+      setStatus(`${blocker.name} can't block ${card.name} — it has flying.`);
+      return;
+    }
+    G.playerBlockers[G.selectedBlocker] = card.uid;
+    log(`You block ${card.name} with ${blocker.name}.`, 'player');
+    G.selectedBlocker = null;
+    setStatus('Assign more blockers, or Confirm to resolve combat.');
+    render();
+  }
+}
+
+function resolveAIvPCombat() {
+  G.phase = PHASE.RESOLVE;
+  G.selectedBlocker = null;
+  render();
+  setTimeout(() => {
+    for (const atkUid of G.attackers) {
+      const atk = G.ai.field.find(c => c.uid === atkUid);
+      if (!atk) continue;
+      const ap = atk.power + atk.pumpP;
+      // Find player blocker assigned to this attacker
+      const blkUid = Object.keys(G.playerBlockers).find(k => G.playerBlockers[k] === atkUid);
+      if (blkUid) {
+        const blk = G.player.field.find(c => c.uid === parseInt(blkUid));
+        if (blk) {
+          const bp = blk.power + blk.pumpP;
+          dealDmg(atk, bp, blk.name);
+          dealDmg(blk, ap, atk.name);
+        }
+      } else {
+        G.player.life -= ap;
+        log(`${atk.name} deals ${ap} to you. (${G.player.life} life)`, 'combat');
+      }
+      atk.tapped = true;
+    }
+    cleanDead();
+    G.attackers = [];
+    G.playerBlockers = {};
+    G.phase = PHASE.MAIN;
+    render();
+    checkWin();
+    if (G.phase !== PHASE.OVER) setTimeout(endAiTurn, 500);
+  }, 700);
+}
+
+function endAiTurn() {
+  // AI discards to 7
+  while (G.ai.hand.length > 7) {
+    const d = G.ai.hand.shift();
+    G.ai.grave.push(d);
+    log(`AI discards ${d.name}.`, 'ai');
+  }
+  log('AI ends its turn.', 'ai');
+  startTurn('player');
+}
+
+function endTurn() {
+  if (G.turn !== 'player' || G.phase === PHASE.RESOLVE) return;
+  if (G.phase === PHASE.ATTACK || G.phase === PHASE.BLOCK) { cancelAction(); return; }
+  // Player discards to 7
+  while (G.player.hand.length > 7) {
+    const d = G.player.hand.shift();
+    G.player.grave.push(d);
+    log(`You discard ${d.name}.`, 'player');
+  }
+  log('You end your turn.', 'player');
+  startTurn('ai');
+}
+
+// ============================================================
+// TARGETING FROM HAND
+// ============================================================
+function handleTargetClick(targetCard, targetWho) {
+  if (!G.targetMode) return;
+  const handCard = G.player.hand.find(c => c.uid === G.targetMode.uid);
+  if (!handCard) { cancelAction(); return; }
+
+  const { target } = G.targetMode;
+  let resolved = null;
+
+  if (target === 'any' && targetCard.type === 'creature') resolved = targetCard;
+  else if (target === 'creature_any' && targetCard.type === 'creature') resolved = targetCard;
+  else if (target === 'creature_own' && targetCard.type === 'creature' && targetWho === 'player') resolved = targetCard;
+
+  if (resolved) {
+    castCard('player', handCard, resolved);
+  } else {
+    setStatus('Invalid target. Try again or press Cancel.');
+  }
+}
+
+function targetAIPlayer() {
+  if (!G.targetMode) return;
+  const handCard = G.player.hand.find(c => c.uid === G.targetMode.uid);
+  if (handCard && G.targetMode.target === 'any') {
+    castCard('player', handCard, 'ai');
+  }
+}
+
+// ============================================================
+// WIN CHECK
+// ============================================================
+function checkWin() {
+  if (G.ai.life <= 0)     gameOver(true);
+  else if (G.player.life <= 0) gameOver(false);
+}
+
+function gameOver(playerWon) {
+  G.phase = PHASE.OVER;
+  const title = document.getElementById('overlay-title');
+  const msg   = document.getElementById('overlay-msg');
+  if (playerWon) {
+    title.textContent = '\u{1F3C6} Victory!';
+    title.style.color = '#ffd700';
+    msg.textContent = `You defeated the Arcane AI! (You: ${G.player.life} life — AI: ${G.ai.life} life)`;
+    log('\u2694 YOU WIN! \u2694', 'win');
+  } else {
+    title.textContent = '\u{1F480} Defeat';
+    title.style.color = '#cc4444';
+    msg.textContent = `The Arcane AI wins. (You: ${G.player.life} life — AI: ${G.ai.life} life)`;
+    log('\u2694 DEFEAT \u2694', 'win');
+  }
+  document.getElementById('overlay').classList.add('active');
+  render();
+}
+
+function newGame() {
+  document.getElementById('overlay').classList.remove('active');
+  document.getElementById('game-log').innerHTML = '';
+  initGame();
+}
+
+// ============================================================
+// RENDERING
+// ============================================================
+function log(msg, cls) {
+  const div = document.getElementById('game-log');
+  const e = document.createElement('div');
+  e.className = `log-entry log-${cls}`;
+  e.textContent = msg;
+  div.appendChild(e);
+  div.scrollTop = div.scrollHeight;
+}
+
+function setStatus(msg) {
+  document.getElementById('status-msg').textContent = msg;
+}
+
+function render() {
+  renderInfo('player');
+  renderInfo('ai');
+  renderField('player');
+  renderField('ai');
+  renderHand();
+  renderControls();
+}
+
+function renderInfo(who) {
+  const p = G[who];
+  if (who === 'player') {
+    document.getElementById('player-life').textContent = `\u2764 ${p.life}`;
+    document.getElementById('player-mana').textContent = `\u{1F48E} ${p.mana}/${calcMaxMana('player')}`;
+    document.getElementById('player-counts').textContent = `Deck: ${p.deck.length} \u00A0|\u00A0 \u2620 ${p.grave.length}`;
+  } else {
+    document.getElementById('ai-life').textContent = `\u2764 ${p.life}`;
+    document.getElementById('ai-mana').textContent = `\u{1F48E} ${p.mana}/${calcMaxMana('ai')}`;
+    document.getElementById('ai-counts').textContent = `Hand: ${p.hand.length} \u00A0|\u00A0 Deck: ${p.deck.length} \u00A0|\u00A0 \u2620 ${p.grave.length}`;
+  }
+  // Show/hide target hint on AI bar
+  const hint = document.getElementById('ai-target-hint');
+  hint.style.display = (G.targetMode?.target === 'any') ? 'inline' : 'none';
+}
+
+function renderField(who) {
+  const zone = document.getElementById(`${who}-battlefield`);
+  zone.innerHTML = '';
+  G[who].field.forEach(card => zone.appendChild(makeCardEl(card, who, 'field')));
+}
+
+function renderHand() {
+  const zone = document.getElementById('hand-zone');
+  zone.innerHTML = '';
+  G.player.hand.forEach(card => zone.appendChild(makeCardEl(card, 'player', 'hand')));
+}
+
+function makeCardEl(card, who, location) {
+  const div = document.createElement('div');
+  div.className = 'card';
+  div.style.background = card.bg || '#1a1a2a';
+  div.dataset.uid = card.uid;
+
+  // State classes
+  if (card.tapped) div.classList.add('tapped');
+  if (card.uid === G.selectedUid) div.classList.add('selected');
+  if (G.attackers.includes(card.uid) && G.turn === 'player') div.classList.add('attacking');
+  if (G.attackers.includes(card.uid) && G.turn === 'ai')     div.classList.add('attacking');
+  if (G.selectedBlocker === card.uid) div.classList.add('blocker-sel');
+
+  // Valid target highlight
+  if (G.targetMode && location === 'field') {
+    const t = G.targetMode.target;
+    if ((t === 'any' || t === 'creature_any') && card.type === 'creature') div.classList.add('valid-target');
+    if (t === 'creature_own' && card.type === 'creature' && who === 'player') div.classList.add('valid-target');
+  }
+
+  // Land tap highlight
+  if (location === 'field' && card.type === 'land' && !card.tapped && G.turn === 'player' && G.phase === PHASE.MAIN) {
+    div.classList.add('land-tapable');
+  }
+
+  // Blocker phase: highlight AI attackers as targets, player creatures as blockable
+  if (G.phase === PHASE.BLOCK && G.turn === 'ai') {
+    if (who === 'ai' && G.attackers.includes(card.uid)) div.classList.add('valid-target');
+    if (who === 'player' && card.type === 'creature' && !card.tapped) {
+      const alreadyBlocking = Object.keys(G.playerBlockers).includes(String(card.uid));
+      if (alreadyBlocking) div.classList.add('blocking');
+      else div.classList.add('land-tapable');
+    }
+  }
+
+  // Cost
+  if (card.cost > 0) {
+    const cost = document.createElement('div');
+    cost.className = 'card-cost';
+    cost.textContent = card.cost;
+    div.appendChild(cost);
+  }
+
+  // Art
+  const art = document.createElement('div');
+  art.className = 'card-art';
+  art.innerHTML = card.art;
+  div.appendChild(art);
+
+  // Name
+  const name = document.createElement('div');
+  name.className = 'card-name';
+  name.textContent = card.name;
+  div.appendChild(name);
+
+  // Creature abilities
+  if (card.type === 'creature') {
+    if (card.abilities?.length) {
+      const ab = document.createElement('div');
+      ab.className = 'card-ability';
+      ab.textContent = card.abilities.join(', ');
+      div.appendChild(ab);
+    }
+    const stats = document.createElement('div');
+    stats.className = 'card-stats' + (card.damage > 0 ? ' hurt' : '');
+    const ep = card.power + card.pumpP;
+    const et = card.toughness + card.pumpT;
+    stats.textContent = `${ep}/${et}${card.damage ? ` [${card.damage}dmg]` : ''}`;
+    div.appendChild(stats);
+    if (card.summoningSick && location === 'field') {
+      const sick = document.createElement('div');
+      sick.className = 'card-sick';
+      sick.textContent = 'summoning sickness';
+      div.appendChild(sick);
+    }
+  }
+
+  // Spell description in hand
+  if (card.type === 'spell' && location === 'hand') {
+    const desc = document.createElement('div');
+    desc.className = 'card-desc';
+    desc.textContent = DB[card.id]?.desc || '';
+    div.appendChild(desc);
+  }
+
+  // Click
+  div.addEventListener('click', () => onCardClick(card, who, location));
+  // Tooltip
+  div.addEventListener('mousemove', e => showTip(card, e));
+  div.addEventListener('mouseleave', hideTip);
+
+  return div;
+}
+
+function onCardClick(card, who, location) {
+  if (G.phase === PHASE.OVER || G.phase === PHASE.RESOLVE) return;
+
+  if (location === 'hand' && who === 'player') {
+    if (G.turn !== 'player') return;
+    selectHandCard(card);
+    return;
+  }
+
+  if (location === 'field') {
+    // Target mode — targeting a creature
+    if (G.targetMode) {
+      handleTargetClick(card, who);
+      return;
+    }
+    // Attack phase — toggle attacker
+    if (G.phase === PHASE.ATTACK && who === 'player') {
+      toggleAttacker(card);
+      return;
+    }
+    // Block phase — assign blockers
+    if (G.phase === PHASE.BLOCK && G.turn === 'ai') {
+      handlePlayerBlockClick(card, who);
+      return;
+    }
+    // Tap land
+    if (who === 'player' && card.type === 'land' && G.turn === 'player' && G.phase === PHASE.MAIN) {
+      tapLand(card);
+      return;
+    }
+  }
+}
+
+function renderControls() {
+  const isPlayer = G.turn === 'player';
+  const phase = G.phase;
+
+  const btnAtk  = document.getElementById('btn-attack');
+  const btnCon  = document.getElementById('btn-confirm');
+  const btnCan  = document.getElementById('btn-cancel');
+  const btnEnd  = document.getElementById('btn-end');
+
+  const readyAtkers = creatures('player').filter(c => !c.tapped && !c.summoningSick).length;
+  btnAtk.disabled = !isPlayer || phase !== PHASE.MAIN || readyAtkers === 0;
+  btnEnd.disabled = !isPlayer || phase === PHASE.RESOLVE;
+
+  // Confirm / Cancel visibility
+  if (phase === PHASE.ATTACK) {
+    btnCon.style.display = 'inline-block';
+    btnCan.style.display = 'inline-block';
+    btnCon.textContent = `\u2713 Send ${G.attackers.length} attacker(s)`;
+  } else if (phase === PHASE.BLOCK && G.turn === 'ai') {
+    btnCon.style.display = 'inline-block';
+    btnCan.style.display = 'none';
+    btnCon.textContent = '\u{1F6E1} Done Blocking';
+  } else {
+    btnCon.style.display = 'none';
+    btnCan.style.display = 'none';
+  }
+
+  // Phase label
+  let label = '';
+  if (!isPlayer) label = 'AI TURN';
+  else if (phase === PHASE.ATTACK)  label = 'ATTACK PHASE';
+  else if (phase === PHASE.BLOCK)   label = 'BLOCK PHASE';
+  else if (phase === PHASE.RESOLVE) label = 'RESOLVING...';
+  else label = 'YOUR TURN';
+  document.getElementById('phase-label').textContent = label;
+
+  // Default status hint
+  if (isPlayer && phase === PHASE.MAIN && !G.targetMode) {
+    const untapped = lands('player').filter(c => !c.tapped).length;
+    setStatus(`Mana: ${G.player.mana} \u00A0|\u00A0 Untapped lands: ${untapped} \u00A0|\u00A0 Click a land to tap it, click a card in hand to play it.`);
+  }
+}
+
+// ============================================================
+// TOOLTIP
+// ============================================================
+function showTip(card, e) {
+  const tt = document.getElementById('tooltip');
+  let html = `<strong>${card.name}</strong><br>`;
+  if (card.type === 'land')     html += 'Land &mdash; click to tap for 1 mana.';
+  else if (card.type === 'creature') {
+    const ep = card.power + card.pumpP, et = card.toughness + card.pumpT;
+    html += `Creature &mdash; ${ep}/${et}`;
+    if (card.abilities?.length) html += `<br><em>${card.abilities.join(', ')}</em>`;
+    if (card.damage) html += `<br>Damage taken: ${card.damage}`;
+    if (card.summoningSick) html += '<br><span style="color:#999">Summoning sickness</span>';
+  } else if (card.type === 'spell') {
+    html += `Spell (cost: ${card.cost})<br>${DB[card.id]?.desc || ''}`;
+  }
+  tt.innerHTML = html;
+  tt.style.display = 'block';
+  tt.style.left = Math.min(e.clientX + 14, window.innerWidth - 210) + 'px';
+  tt.style.top  = Math.max(e.clientY - 30, 4) + 'px';
+}
+function hideTip() { document.getElementById('tooltip').style.display = 'none'; }
+
+// Click AI bar to target AI player with a spell
+document.getElementById('ai-bar').addEventListener('click', targetAIPlayer);
+
+// ============================================================
+// START
+// ============================================================
+initGame();
+</script>
+</body>
+</html>
