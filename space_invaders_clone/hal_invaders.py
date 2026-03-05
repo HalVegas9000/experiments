@@ -52,6 +52,15 @@ UFO_BOMB_COL  = "#ff8800"   # orange UFO bomb
 UFO_BOMB_SPD  = 3           # px/frame (slower than normal enemy bullets)
 UFO_BOMB_RATE = 130         # frames between UFO bomb drops
 
+# ── Power-up ───────────────────────────────────────────────────────────
+PU_COL        = "#00ffff"   # cyan power-up
+PU_GLOW       = "#003344"   # dark glow behind it
+PU_SPAWN_MIN  = 500         # min frames between power-up spawns
+PU_SPAWN_MAX  = 950         # max frames between power-up spawns
+PU_DURATION   = 10000       # ms the double-fire effect lasts
+PU_DRIFT      = 0.5         # px/frame the power-up drifts downward
+PU_BLINK_RATE = 24          # frames per blink cycle when low on time
+
 # ── Physics / Timing ───────────────────────────────────────────────────
 LOOP_MS    = 16          # ~60 fps
 PSPD       = 7           # player px/frame
@@ -120,6 +129,9 @@ def gen_sounds():
     snd['ufohit'] = _clamp(_fade(_mix(_sweep(1200,200,0.3), _noise(0.3, vol=8000))))
     # UFO bomb drop: low descending wobble
     snd['ufobomb'] = _clamp(_fade(_square(180, 0.22, vol=7000)))
+    # Power-up collect: bright ascending arpeggio
+    snd['powerup'] = _clamp(
+        _sine(880, 0.07) + _sine(1100, 0.07) + _sine(1320, 0.07) + _sine(1760, 0.12))
     # 4 march steps (classic low "dum dum dum dum")
     for i, freq in enumerate([160, 130, 100, 120]):
         snd[f'march{i}'] = _clamp(_fade(_square(freq, 0.07)))
@@ -400,6 +412,13 @@ class SpaceInvaders:
         self.ufo_timer = random.randint(400, 900)  # frames until next UFO appears
         self.ufo_bombs = []   # list of {'x','y','id'}
 
+        # Power-up
+        self.powerup        = None   # {'x','y','ids':[],'blink':0} when on screen
+        self.powerup_timer  = random.randint(PU_SPAWN_MIN, PU_SPAWN_MAX)
+        self.powerup_active = False  # True while double-fire is in effect
+        self._pu_reset_id   = None   # after() handle for deactivation
+        self._pu_hud_id     = None   # canvas text item for active indicator
+
         self._init_shields()
         self._draw_hud()
         self._draw_ground()
@@ -423,12 +442,15 @@ class SpaceInvaders:
         self.canvas.delete('explosion')
         self.canvas.delete('ufo')
         self.canvas.delete('ufobomb')
+        self.canvas.delete('powerup')
         self.pbullets   = []
         self.ebullets   = []
         self.explosions = []
         self.ufo        = None
         self.ufo_timer  = random.randint(400, 900)
         self.ufo_bombs  = []
+        self.powerup    = None
+        self.powerup_timer = random.randint(PU_SPAWN_MIN, PU_SPAWN_MAX)
         self.grid_dx    = 1
         self.grid_ox    = 0
         self.grid_oy    = 0
@@ -640,6 +662,9 @@ class SpaceInvaders:
         self._update_ufo()
         self._update_ufo_bombs()
 
+        # Power-up
+        self._update_powerup()
+
         # Explosions
         self._update_explosions()
 
@@ -677,7 +702,8 @@ class SpaceInvaders:
     def _fire_player(self):
         if self.dead_timer > 0:
             return
-        if len(self.pbullets) >= MAX_PB:
+        max_pb = 2 if self.powerup_active else MAX_PB
+        if len(self.pbullets) >= max_pb:
             return
         bx = self.px
         by = PLAYER_Y - 18
@@ -706,6 +732,11 @@ class SpaceInvaders:
 
             # Hit UFO?
             if self._pbullet_hit_ufo(b):
+                self.canvas.delete(b['id'])
+                continue
+
+            # Hit power-up?
+            if self._pbullet_hit_powerup(b):
                 self.canvas.delete(b['id'])
                 continue
 
@@ -992,6 +1023,77 @@ class SpaceInvaders:
             alive.append(b)
         self.ufo_bombs = alive
 
+    # ── Power-up ───────────────────────────────────────────────────────
+    def _update_powerup(self):
+        if self.powerup is None:
+            self.powerup_timer -= 1
+            if self.powerup_timer <= 0:
+                self._spawn_powerup()
+            return
+
+        pu = self.powerup
+        pu['y'] += PU_DRIFT
+        for iid in pu['ids']:
+            self.canvas.move(iid, 0, PU_DRIFT)
+
+        # Blink
+        pu['blink'] = (pu['blink'] + 1) % PU_BLINK_RATE
+        state = 'normal' if pu['blink'] < PU_BLINK_RATE // 2 else 'hidden'
+        for iid in pu['ids']:
+            self.canvas.itemconfigure(iid, state=state)
+
+        # Fell off screen
+        if pu['y'] > GROUND_Y:
+            for iid in pu['ids']:
+                self.canvas.delete(iid)
+            self.powerup       = None
+            self.powerup_timer = random.randint(PU_SPAWN_MIN, PU_SPAWN_MAX)
+
+    def _spawn_powerup(self):
+        x = random.randint(80, W - 80)
+        y = random.randint(int(GROUND_Y * 0.42), int(GROUND_Y * 0.62))
+        ids = []
+        # Glow halo
+        ids.append(self.canvas.create_rectangle(
+            x - 26, y - 14, x + 26, y + 14,
+            fill=PU_GLOW, outline=PU_COL, width=2, tags='powerup'))
+        # Label
+        ids.append(self.canvas.create_text(
+            x, y, text="2X", font=("Courier", 16, "bold"),
+            fill=PU_COL, tags='powerup'))
+        self.powerup = {'x': float(x), 'y': float(y), 'ids': ids, 'blink': 0}
+
+    def _pbullet_hit_powerup(self, b):
+        if self.powerup is None:
+            return False
+        pu = self.powerup
+        if abs(b['x'] - pu['x']) < 28 and abs(b['y'] - pu['y']) < 16:
+            for iid in pu['ids']:
+                self.canvas.delete(iid)
+            self.powerup       = None
+            self.powerup_timer = random.randint(PU_SPAWN_MIN, PU_SPAWN_MAX)
+            self._activate_powerup()
+            return True
+        return False
+
+    def _activate_powerup(self):
+        self.powerup_active = True
+        play_snd(self.sounds, 'powerup')
+        # Cancel any existing countdown
+        if self._pu_reset_id:
+            self.root.after_cancel(self._pu_reset_id)
+        # Show HUD indicator
+        self.canvas.delete('pu_hud')
+        self._pu_hud_id = self.canvas.create_text(
+            W // 2, GROUND_Y + 18, text=">> 2X RAPID FIRE <<",
+            font=("Courier", 13, "bold"), fill=PU_COL, tags='pu_hud')
+        self._pu_reset_id = self.root.after(PU_DURATION, self._deactivate_powerup)
+
+    def _deactivate_powerup(self):
+        self.powerup_active = False
+        self._pu_reset_id   = None
+        self.canvas.delete('pu_hud')
+
     def _reset_ufo_sound(self):
         self._ufo_playing = False
         if self.ufo and self.state == 'playing':
@@ -1004,6 +1106,9 @@ class SpaceInvaders:
         if self._march_after:
             self.root.after_cancel(self._march_after)
             self._march_after = None
+        if self._pu_reset_id:
+            self.root.after_cancel(self._pu_reset_id)
+            self._pu_reset_id = None
         c = self.canvas
         c.create_rectangle(W//2 - 180, H//2 - 70,
                             W//2 + 180, H//2 + 70,
