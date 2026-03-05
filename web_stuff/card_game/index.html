@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Arcane Duel</title>
+<title>Food Battles</title>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  background: #0d0d1a;
-  color: #c8b89a;
+  background: #fff8e7;
+  color: #2d1a00;
   font-family: 'Palatino Linotype', Palatino, Georgia, serif;
   height: 100vh;
   display: grid;
@@ -33,23 +33,23 @@ body {
   align-items: center;
   gap: 14px;
   padding: 6px 14px;
-  background: rgba(255,255,255,0.04);
+  background: rgba(255, 200, 50, 0.15);
   border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.08);
+  border: 1px solid rgba(200, 140, 0, 0.35);
   flex-shrink: 0;
   cursor: default;
 }
-.player-bar.ai-bar:hover { border-color: rgba(255,150,150,0.3); }
-.player-bar .name { font-weight: bold; font-size: 0.95em; }
-.player-bar .life { color: #ff7b7b; font-size: 1.15em; font-weight: bold; }
-.player-bar .mana-info { color: #7bb5ff; font-size: 0.9em; }
-.player-bar .counts { color: #888; font-size: 0.82em; }
-.target-hint { font-size: 0.75em; color: #ffcc44; display: none; }
+.player-bar.ai-bar:hover { border-color: rgba(255, 80, 80, 0.5); }
+.player-bar .name { font-weight: bold; font-size: 0.95em; color: #5a3000; }
+.player-bar .life { color: #e53935; font-size: 1.15em; font-weight: bold; }
+.player-bar .mana-info { color: #e65100; font-size: 0.9em; font-weight: bold; }
+.player-bar .counts { color: #7a5500; font-size: 0.82em; }
+.target-hint { font-size: 0.75em; color: #e65100; display: none; }
 
 /* ── BATTLEFIELDS ── */
 .battlefield {
-  background: rgba(0, 60, 0, 0.12);
-  border: 1px dashed rgba(100,200,100,0.15);
+  background: rgba(80, 200, 80, 0.08);
+  border: 2px dashed rgba(60, 160, 60, 0.35);
   border-radius: 8px;
   padding: 6px;
   display: flex;
@@ -66,12 +66,12 @@ body {
   bottom: 4px;
   right: 8px;
   font-size: 0.65em;
-  color: rgba(255,255,255,0.18);
+  color: rgba(0,0,0,0.25);
   text-transform: uppercase;
   letter-spacing: 2px;
   pointer-events: none;
 }
-#ai-battlefield { border-color: rgba(255,100,100,0.15); }
+#ai-battlefield { background: rgba(255, 80, 80, 0.06); border-color: rgba(220, 60, 60, 0.3); }
 
 /* ── CONTROLS BAR ── */
 #controls {
@@ -79,23 +79,24 @@ body {
   align-items: center;
   gap: 10px;
   padding: 0 6px;
-  background: rgba(0,0,0,0.3);
+  background: rgba(255, 235, 150, 0.6);
   border-radius: 8px;
-  border-top: 1px solid rgba(255,100,100,0.2);
-  border-bottom: 1px solid rgba(100,100,255,0.2);
+  border-top: 2px solid #f9a825;
+  border-bottom: 2px solid #66bb6a;
   flex-shrink: 0;
 }
 #phase-label {
   font-size: 0.72em;
-  color: #ffd700;
+  color: #c62828;
   letter-spacing: 1px;
   white-space: nowrap;
   min-width: 110px;
+  font-weight: bold;
 }
 #status-msg {
   flex: 1;
   font-size: 0.78em;
-  color: #aaa;
+  color: #4a2800;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -108,9 +109,9 @@ body {
   overflow-x: auto;
   padding: 5px 6px;
   align-items: center;
-  background: rgba(0,0,0,0.2);
+  background: rgba(255, 220, 100, 0.2);
   border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.06);
+  border: 1px solid rgba(200, 150, 0, 0.3);
   flex-shrink: 0;
   scrollbar-width: thin;
 }
@@ -128,14 +129,14 @@ button {
   white-space: nowrap;
 }
 button:disabled { opacity: 0.35; cursor: not-allowed; }
-#btn-attack  { background: #7a1010; color: #ffcccc; border: 1px solid #aa3333; }
-#btn-attack:hover:not(:disabled)  { background: #aa1515; }
-#btn-end     { background: #1a3d6e; color: #aaddff; border: 1px solid #2255aa; }
-#btn-end:hover:not(:disabled)     { background: #2255aa; }
-#btn-confirm { background: #1a5a1a; color: #aaffaa; border: 1px solid #2a8a2a; }
-#btn-confirm:hover:not(:disabled) { background: #2a8a2a; }
-#btn-cancel  { background: #3a3a3a; color: #ccc; border: 1px solid #555; }
-#btn-cancel:hover:not(:disabled)  { background: #555; }
+#btn-attack  { background: #e53935; color: #fff; border: 2px solid #b71c1c; border-radius: 20px; }
+#btn-attack:hover:not(:disabled)  { background: #c62828; }
+#btn-end     { background: #1e88e5; color: #fff; border: 2px solid #1565c0; border-radius: 20px; }
+#btn-end:hover:not(:disabled)     { background: #1565c0; }
+#btn-confirm { background: #43a047; color: #fff; border: 2px solid #2e7d32; border-radius: 20px; }
+#btn-confirm:hover:not(:disabled) { background: #2e7d32; }
+#btn-cancel  { background: #757575; color: #fff; border: 2px solid #424242; border-radius: 20px; }
+#btn-cancel:hover:not(:disabled)  { background: #424242; }
 
 /* ── CARDS ── */
 .card {
@@ -220,7 +221,7 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
 .card-ability {
   text-align: center;
   font-size: 0.75em;
-  color: #aabbff;
+  color: #ffe082;
   padding: 2px 2px 1px;
   line-height: 1;
   font-style: italic;
@@ -251,8 +252,8 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
 
 /* ── SIDEBAR / LOG ── */
 #sidebar {
-  background: rgba(0,0,0,0.45);
-  border-left: 1px solid rgba(255,255,255,0.08);
+  background: #fff3d0;
+  border-left: 2px solid #f9a825;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -260,11 +261,12 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
 #sidebar-title {
   padding: 10px;
   text-align: center;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
-  font-size: 0.85em;
-  letter-spacing: 3px;
-  color: #9a8a6a;
+  border-bottom: 2px solid #f9a825;
+  font-size: 0.9em;
+  letter-spacing: 2px;
+  color: #c45200;
   font-variant: small-caps;
+  font-weight: bold;
   flex-shrink: 0;
 }
 #game-log {
@@ -275,12 +277,12 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
   line-height: 1.65;
   scrollbar-width: thin;
 }
-.log-entry { padding: 1px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
-.log-player  { color: #88bbff; }
-.log-ai      { color: #ff9999; }
-.log-combat  { color: #ffbb55; }
+.log-entry { padding: 1px 0; border-bottom: 1px solid rgba(0,0,0,0.06); }
+.log-player  { color: #1565c0; }
+.log-ai      { color: #c62828; }
+.log-combat  { color: #e65100; }
 .log-system  { color: #888; font-style: italic; }
-.log-win     { color: #ffd700; font-weight: bold; font-size: 1.05em; }
+.log-win     { color: #e65100; font-weight: bold; font-size: 1.05em; }
 
 /* ── OVERLAY ── */
 #overlay {
@@ -297,14 +299,14 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
 #overlay.active { display: flex; }
 #overlay-title { font-size: 3.2em; text-shadow: 0 0 30px currentColor; }
 #overlay-msg { font-size: 1em; color: #aaa; }
-#overlay button { padding: 12px 36px; font-size: 1em; background: #2a4a2a; color: #aaffaa; border: 1px solid #4a8a4a; }
-#overlay button:hover { background: #3a6a3a; }
+#overlay button { padding: 12px 36px; font-size: 1em; background: #f57c00; color: #fff; border: 2px solid #e65100; border-radius: 20px; }
+#overlay button:hover { background: #e65100; }
 
 /* ── TOOLTIP ── */
 #tooltip {
   position: fixed;
-  background: #1a1a2e;
-  border: 1px solid #555;
+  background: #fff9e6;
+  border: 2px solid #f9a825;
   border-radius: 7px;
   padding: 8px 10px;
   font-size: 0.8em;
@@ -313,7 +315,8 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
   z-index: 300;
   max-width: 200px;
   display: none;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  color: #2d1a00;
 }
 </style>
 </head>
@@ -323,9 +326,9 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
 
   <!-- AI Info -->
   <div class="player-bar ai-bar" id="ai-bar">
-    <span class="name">&#x1F52E; Arcane AI</span>
+    <span class="name">&#x1F354; Burger Bot</span>
     <span class="life" id="ai-life">&#x2764; 20</span>
-    <span class="mana-info" id="ai-mana">&#x1F48E; 0/0</span>
+    <span class="mana-info" id="ai-mana">&#x1F525; 0/0 cal</span>
     <span class="counts" id="ai-counts">Hand: 7 &nbsp;|&nbsp; Deck: 33 &nbsp;|&nbsp; &#x2620; 0</span>
     <span class="target-hint" id="ai-target-hint">[Click to target]</span>
   </div>
@@ -336,7 +339,7 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
   <!-- Controls -->
   <div id="controls">
     <span id="phase-label">YOUR TURN</span>
-    <span id="status-msg">Tap lands for mana, then play cards from your hand.</span>
+    <span id="status-msg">Tap energy cards for calories, then play cards from your hand.</span>
     <button id="btn-attack"  onclick="startAttack()">&#x2694; Attack</button>
     <button id="btn-confirm" onclick="confirmAction()" style="display:none">&#x2713; Confirm</button>
     <button id="btn-cancel"  onclick="cancelAction()" style="display:none">&#x2717; Cancel</button>
@@ -351,9 +354,9 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
 
   <!-- Player Info -->
   <div class="player-bar" id="player-bar">
-    <span class="name">&#x1F9D9; You</span>
+    <span class="name">&#x1F9D1;&#x200D;&#x1F373; You</span>
     <span class="life" id="player-life">&#x2764; 20</span>
-    <span class="mana-info" id="player-mana">&#x1F48E; 0/0</span>
+    <span class="mana-info" id="player-mana">&#x1F525; 0/0 cal</span>
     <span class="counts" id="player-counts">Deck: 33 &nbsp;|&nbsp; &#x2620; 0</span>
   </div>
 
@@ -361,7 +364,7 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
 
 <!-- Sidebar / Log -->
 <div id="sidebar">
-  <div id="sidebar-title">&#x2694; Arcane Duel &#x2694;</div>
+  <div id="sidebar-title">&#x1F37D; Food Battles &#x1F37D;</div>
   <div id="game-log"></div>
 </div>
 
@@ -378,48 +381,149 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
 'use strict';
 
 // ============================================================
+// SOUND EFFECTS  (Web Audio API — no files needed)
+// ============================================================
+const SFX = {
+  _ctx: null,
+  get ctx() {
+    if (!this._ctx)
+      this._ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (this._ctx.state === 'suspended') this._ctx.resume();
+    return this._ctx;
+  },
+
+  // Oscillator tone, optional frequency sweep
+  _osc(freq, type, dur, vol, freqEnd) {
+    try {
+      const ctx = this.ctx, t = ctx.currentTime;
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = type || 'sine';
+      osc.frequency.setValueAtTime(freq, t);
+      if (freqEnd) osc.frequency.exponentialRampToValueAtTime(freqEnd, t + dur);
+      gain.gain.setValueAtTime(vol || 0.25, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      osc.start(t); osc.stop(t + dur + 0.05);
+    } catch(e) {}
+  },
+
+  // Short burst of white noise
+  _noise(dur, vol) {
+    try {
+      const ctx = this.ctx, t = ctx.currentTime;
+      const len  = Math.ceil(ctx.sampleRate * dur);
+      const buf  = ctx.createBuffer(1, len, ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+      const src  = ctx.createBufferSource();
+      src.buffer = buf;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(vol || 0.2, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      src.connect(gain); gain.connect(ctx.destination);
+      src.start(t);
+    } catch(e) {}
+  },
+
+  // Tap energy card — bubble pop
+  tap() {
+    this._osc(520, 'sine', 0.1, 0.22, 210);
+  },
+
+  // Play creature — squishy boing
+  creature() {
+    this._osc(160, 'sine', 0.28, 0.3, 440);
+    this._osc(440, 'sine', 0.14, 0.14, 660);
+  },
+
+  // Cast spell — sparkling ascending arpeggio
+  spell() {
+    [600, 800, 1050, 1350].forEach((f, i) =>
+      setTimeout(() => this._osc(f, 'sine', 0.16, 0.2), i * 55));
+  },
+
+  // Attack declared — low dramatic hit
+  attack() {
+    this._osc(110, 'sawtooth', 0.18, 0.4, 55);
+    this._noise(0.12, 0.18);
+  },
+
+  // Damage impact — smack
+  hit() {
+    this._osc(230, 'sawtooth', 0.1, 0.38, 75);
+    this._noise(0.07, 0.28);
+  },
+
+  // Creature destroyed — deflating descend
+  die() {
+    this._osc(360, 'sawtooth', 0.42, 0.28, 48);
+    this._noise(0.18, 0.12);
+  },
+
+  // Block assigned — shield clunk
+  block() {
+    this._osc(270, 'triangle', 0.16, 0.28, 390);
+  },
+
+  // Your turn — cheerful double chime
+  yourTurn() {
+    this._osc(880,  'sine', 0.14, 0.2);
+    setTimeout(() => this._osc(1100, 'sine', 0.18, 0.2), 110);
+  },
+
+  // Win — happy food fanfare
+  win() {
+    [523, 659, 784, 1047, 784, 1047].forEach((f, i) =>
+      setTimeout(() => this._osc(f, 'sine', 0.32, 0.32), i * 100));
+  },
+
+  // Lose — sad descending trombone
+  lose() {
+    [400, 340, 280, 210, 160].forEach((f, i) =>
+      setTimeout(() => this._osc(f, 'triangle', 0.38, 0.28), i * 130));
+  },
+};
+
+// ============================================================
 // CARD DATABASE
 // ============================================================
 const DB = {
-  // Lands
-  forest:    { name:'Forest',         type:'land',    cost:0, art:'&#x1F332;', bg:'#0d2e0d' },
-  mountain:  { name:'Mountain',       type:'land',    cost:0, art:'&#x26F0;',  bg:'#2e1508' },
-  plains:    { name:'Plains',         type:'land',    cost:0, art:'&#x2600;',  bg:'#2e2b08' },
-  swamp:     { name:'Swamp',          type:'land',    cost:0, art:'&#x1F4A7;', bg:'#0d0d2e' },
-  island:    { name:'Island',         type:'land',    cost:0, art:'&#x1F30A;', bg:'#08182e' },
+  // Energy (produces 1 calorie when tapped)
+  energy:    { name:'Energy',         type:'land',    cost:0, art:'&#x1F50B;', bg:'#00695c' },
 
-  // Creatures
-  goblin:    { name:'Goblin Scout',   type:'creature', cost:1, power:1, toughness:1, art:'&#x1F353;', bg:'#2e0a0a', abilities:[] },
-  wolf:      { name:'Forest Wolf',    type:'creature', cost:2, power:2, toughness:2, art:'&#x1F966;', bg:'#0d2e0d', abilities:[] },
-  golem:     { name:'Iron Golem',     type:'creature', cost:3, power:2, toughness:4, art:'&#x1F96B;', bg:'#1a1a2e', abilities:[] },
-  giant:     { name:'Hill Giant',     type:'creature', cost:3, power:3, toughness:3, art:'&#x1F354;', bg:'#2e1508', abilities:[] },
-  drake:     { name:'Fire Drake',     type:'creature', cost:4, power:4, toughness:2, art:'&#x1F336;', bg:'#2e0a00', abilities:['flying'] },
-  elephant:  { name:'War Elephant',   type:'creature', cost:4, power:3, toughness:5, art:'&#x1F356;', bg:'#1a1a1a', abilities:[] },
-  serpent:   { name:'Sky Serpent',    type:'creature', cost:5, power:4, toughness:4, art:'&#x1F35C;', bg:'#08102e', abilities:['flying'] },
-  colossus:  { name:'Stone Colossus', type:'creature', cost:6, power:6, toughness:6, art:'&#x1F382;', bg:'#111111', abilities:[] },
+  // Creatures (food fighters)
+  goblin:    { name:'Strawberry',     type:'creature', cost:1, power:1, toughness:1, art:'&#x1F353;', bg:'#ad1457', abilities:[] },
+  wolf:      { name:'Broccoli',       type:'creature', cost:2, power:2, toughness:2, art:'&#x1F966;', bg:'#2e7d32', abilities:[] },
+  golem:     { name:'Tin Can',        type:'creature', cost:3, power:2, toughness:4, art:'&#x1F96B;', bg:'#37474f', abilities:[] },
+  giant:     { name:'Burger',         type:'creature', cost:3, power:3, toughness:3, art:'&#x1F354;', bg:'#bf360c', abilities:[] },
+  drake:     { name:'Hot Pepper',     type:'creature', cost:4, power:4, toughness:2, art:'&#x1F336;', bg:'#b71c1c', abilities:['flying'] },
+  elephant:  { name:'Drumstick',      type:'creature', cost:4, power:3, toughness:5, art:'&#x1F356;', bg:'#4e342e', abilities:[] },
+  serpent:   { name:'Ramen',          type:'creature', cost:5, power:4, toughness:4, art:'&#x1F35C;', bg:'#e65100', abilities:['flying'] },
+  colossus:  { name:'Birthday Cake',  type:'creature', cost:6, power:6, toughness:6, art:'&#x1F382;', bg:'#6a1b9a', abilities:[] },
 
   // Spells
-  bolt:      { name:'Lightning Bolt', type:'spell', cost:1, art:'&#x26A1;', bg:'#2e2600',
+  bolt:      { name:'Lightning Bolt', type:'spell', cost:1, art:'&#x26A1;', bg:'#f57f17',
                target:'any',          effect:'damage',     amount:3, desc:'Deal 3 damage to any target.' },
-  salve:     { name:'Healing Salve',  type:'spell', cost:1, art:'&#x1F49A;', bg:'#082e08',
+  salve:     { name:'Healing Salve',  type:'spell', cost:1, art:'&#x1F49A;', bg:'#1b5e20',
                target:'none',         effect:'heal',       amount:4, desc:'Gain 4 life.' },
-  ritual:    { name:'Dark Ritual',    type:'spell', cost:1, art:'&#x1F56F;', bg:'#18003a',
-               target:'none',         effect:'mana',       amount:3, desc:'Add 3 mana to your pool.' },
-  growth:    { name:'Giant Growth',   type:'spell', cost:1, art:'&#x1F33F;', bg:'#003a00',
+  ritual:    { name:'Dark Ritual',    type:'spell', cost:1, art:'&#x1F56F;', bg:'#4a148c',
+               target:'none',         effect:'mana',       amount:3, desc:'Add 3 calories to your pool.' },
+  growth:    { name:'Giant Growth',   type:'spell', cost:1, art:'&#x1F33F;', bg:'#33691e',
                target:'creature_own', effect:'pump',       amount:3, desc:'Target creature gets +3/+3 this turn.' },
-  scroll:    { name:'Mystic Scroll',  type:'spell', cost:2, art:'&#x1F4DC;', bg:'#1a003a',
+  scroll:    { name:'Mystic Scroll',  type:'spell', cost:2, art:'&#x1F4DC;', bg:'#1a237e',
                target:'none',         effect:'draw',       amount:2, desc:'Draw 2 cards.' },
-  plague:    { name:'Plague Cloud',   type:'spell', cost:3, art:'&#x2601;',  bg:'#1a2600',
+  plague:    { name:'Plague Cloud',   type:'spell', cost:3, art:'&#x2601;',  bg:'#558b2f',
                target:'none',         effect:'damage_all', amount:1, desc:'Deal 1 damage to all creatures.' },
-  fireball:  { name:'Fireball',       type:'spell', cost:4, art:'&#x1F525;', bg:'#2e0800',
+  fireball:  { name:'Fireball',       type:'spell', cost:4, art:'&#x1F525;', bg:'#b71c1c',
                target:'any',          effect:'damage',     amount:6, desc:'Deal 6 damage to any target.' },
-  destroy:   { name:'Annihilate',     type:'spell', cost:3, art:'&#x1F480;', bg:'#0a0a0a',
+  destroy:   { name:'Annihilate',     type:'spell', cost:3, art:'&#x1F480;', bg:'#212121',
                target:'creature_any', effect:'destroy',    desc:'Destroy target creature.' },
 };
 
 // Deck recipe: [id, count]
 const DECK_RECIPE = [
-  ['forest',3],['mountain',3],['plains',3],['swamp',3],['island',4],
+  ['energy',16],
   ['goblin',3],['wolf',2],['golem',2],['giant',2],['drake',2],['elephant',1],['serpent',1],['colossus',1],
   ['bolt',3],['salve',1],['ritual',1],['growth',1],['scroll',1],['plague',1],['fireball',1],['destroy',1],
 ];
@@ -480,7 +584,7 @@ function initGame() {
   for (let i = 0; i < 7; i++) drawCard('player');
   for (let i = 0; i < 7; i++) drawCard('ai');
   render();
-  log('The duel begins. You go first.', 'system');
+  log('Food Battles begin! You go first.', 'system');
 }
 
 // ============================================================
@@ -552,6 +656,7 @@ function startTurn(who) {
 
   if (who === 'player') {
     log('--- Your Turn ---', 'system');
+    SFX.yourTurn();
     render();
   } else {
     log('--- AI Turn ---', 'system');
@@ -568,7 +673,8 @@ function tapLand(card) {
   if (card.tapped) { log('That land is already tapped.', 'system'); return; }
   card.tapped = true;
   G.player.mana++;
-  log(`You tap ${card.name}. (${G.player.mana} mana)`, 'player');
+  SFX.tap();
+  log(`You tap ${card.name}. (${G.player.mana} cal)`, 'player');
   render();
 }
 
@@ -590,7 +696,7 @@ function selectHandCard(card) {
   }
 
   if (G.player.mana < card.cost) {
-    setStatus(`Need ${card.cost} mana, have ${G.player.mana}. Tap more lands first.`);
+    setStatus(`Need ${card.cost} cal, have ${G.player.mana}. Tap more energy cards first.`);
     return;
   }
 
@@ -632,7 +738,9 @@ function castCard(who, card, target) {
     card.summoningSick = true;
     card.damage = 0;
     p.field.push(card);
+    SFX.creature();
   } else {
+    SFX.spell();
     applyEffect(who, card, target);
     p.grave.push(card);
   }
@@ -661,7 +769,7 @@ function applyEffect(who, card, target) {
       break;
     case 'mana':
       G[who].mana += card.amount;
-      log(`${who === 'player' ? 'You add' : 'AI adds'} ${card.amount} mana to your pool.`, who === 'player' ? 'player' : 'ai');
+      log(`${who === 'player' ? 'You add' : 'AI adds'} ${card.amount} calories to your pool.`, who === 'player' ? 'player' : 'ai');
       break;
     case 'pump':
       if (target && target.uid) {
@@ -708,6 +816,7 @@ function cleanDead() {
     dead.forEach(c => {
       G[who].field = G[who].field.filter(x => x.uid !== c.uid);
       G[who].grave.push(c);
+      SFX.die();
       log(`${c.name} is destroyed!`, 'combat');
     });
   }
@@ -738,6 +847,7 @@ function toggleAttacker(card) {
 function confirmAction() {
   if (G.phase === PHASE.ATTACK) {
     if (!G.attackers.length) { cancelAction(); return; }
+    SFX.attack();
     log(`You attack with: ${G.attackers.map(u => byUid(u)?.name).join(', ')}.`, 'player');
     assignAiBlockers();
     resolvePvAICombat();
@@ -755,7 +865,7 @@ function cancelAction() {
   G.selectedUid = null;
   G.targetMode = null;
   G.selectedBlocker = null;
-  setStatus('Tap lands for mana, then play cards from your hand.');
+  setStatus('Tap energy cards for calories, then play cards from your hand.');
   render();
 }
 
@@ -831,6 +941,7 @@ function resolvePvAICombat() {
         }
       } else {
         G.ai.life -= ap;
+        SFX.hit();
         log(`${atk.name} deals ${ap} to the AI. (${G.ai.life} life)`, 'combat');
       }
       // Tap attacker
@@ -951,6 +1062,7 @@ function handlePlayerBlockClick(card, who) {
       return;
     }
     G.playerBlockers[G.selectedBlocker] = card.uid;
+    SFX.block();
     log(`You block ${card.name} with ${blocker.name}.`, 'player');
     G.selectedBlocker = null;
     setStatus('Assign more blockers, or Confirm to resolve combat.');
@@ -978,6 +1090,7 @@ function resolveAIvPCombat() {
         }
       } else {
         G.player.life -= ap;
+        SFX.hit();
         log(`${atk.name} deals ${ap} to you. (${G.player.life} life)`, 'combat');
       }
       atk.tapped = true;
@@ -1061,13 +1174,15 @@ function gameOver(playerWon) {
   if (playerWon) {
     title.textContent = '\u{1F3C6} Victory!';
     title.style.color = '#ffd700';
-    msg.textContent = `You defeated the Arcane AI! (You: ${G.player.life} life — AI: ${G.ai.life} life)`;
+    msg.textContent = `You defeated Burger Bot! (You: ${G.player.life} life — AI: ${G.ai.life} life)`;
     log('\u2694 YOU WIN! \u2694', 'win');
+    SFX.win();
   } else {
     title.textContent = '\u{1F480} Defeat';
     title.style.color = '#cc4444';
-    msg.textContent = `The Arcane AI wins. (You: ${G.player.life} life — AI: ${G.ai.life} life)`;
+    msg.textContent = `Burger Bot wins! (You: ${G.player.life} life — AI: ${G.ai.life} life)`;
     log('\u2694 DEFEAT \u2694', 'win');
+    SFX.lose();
   }
   document.getElementById('overlay').classList.add('active');
   render();
@@ -1108,11 +1223,11 @@ function renderInfo(who) {
   const p = G[who];
   if (who === 'player') {
     document.getElementById('player-life').textContent = `\u2764 ${p.life}`;
-    document.getElementById('player-mana').textContent = `\u{1F48E} ${p.mana}/${calcMaxMana('player')}`;
+    document.getElementById('player-mana').textContent = `\u{1F525} ${p.mana}/${calcMaxMana('player')} cal`;
     document.getElementById('player-counts').textContent = `Deck: ${p.deck.length} \u00A0|\u00A0 \u2620 ${p.grave.length}`;
   } else {
     document.getElementById('ai-life').textContent = `\u2764 ${p.life}`;
-    document.getElementById('ai-mana').textContent = `\u{1F48E} ${p.mana}/${calcMaxMana('ai')}`;
+    document.getElementById('ai-mana').textContent = `\u{1F525} ${p.mana}/${calcMaxMana('ai')} cal`;
     document.getElementById('ai-counts').textContent = `Hand: ${p.hand.length} \u00A0|\u00A0 Deck: ${p.deck.length} \u00A0|\u00A0 \u2620 ${p.grave.length}`;
   }
   // Show/hide target hint on AI bar
@@ -1298,7 +1413,7 @@ function renderControls() {
   // Default status hint
   if (isPlayer && phase === PHASE.MAIN && !G.targetMode) {
     const untapped = lands('player').filter(c => !c.tapped).length;
-    setStatus(`Mana: ${G.player.mana} \u00A0|\u00A0 Untapped lands: ${untapped} \u00A0|\u00A0 Click a land to tap it, click a card in hand to play it.`);
+    setStatus(`Calories: ${G.player.mana} \u00A0|\u00A0 Untapped energy cards: ${untapped} \u00A0|\u00A0 Click an ingredient to tap it, click a card in hand to play it.`);
   }
 }
 
@@ -1308,7 +1423,7 @@ function renderControls() {
 function showTip(card, e) {
   const tt = document.getElementById('tooltip');
   let html = `<strong>${card.name}</strong><br>`;
-  if (card.type === 'land')     html += 'Land &mdash; click to tap for 1 mana.';
+  if (card.type === 'land')     html += 'Energy &mdash; click to tap for 1 calorie.';
   else if (card.type === 'creature') {
     const ep = card.power + card.pumpP, et = card.toughness + card.pumpT;
     html += `Creature &mdash; ${ep}/${et}`;
@@ -1316,7 +1431,7 @@ function showTip(card, e) {
     if (card.damage) html += `<br>Damage taken: ${card.damage}`;
     if (card.summoningSick) html += '<br><span style="color:#999">Summoning sickness</span>';
   } else if (card.type === 'spell') {
-    html += `Spell (cost: ${card.cost})<br>${DB[card.id]?.desc || ''}`;
+    html += `Spell (cost: ${card.cost} cal)<br>${DB[card.id]?.desc || ''}`;
   }
   tt.innerHTML = html;
   tt.style.display = 'block';
