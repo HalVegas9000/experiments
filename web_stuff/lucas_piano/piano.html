@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Piano</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #1a1a2e;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: sans-serif;
+      color: #eee;
+    }
+
+    h1 {
+      margin-bottom: 32px;
+      font-size: 1.6rem;
+      letter-spacing: 0.15em;
+      color: #c8a96e;
+    }
+
+    #keyboard {
+      display: flex;
+      position: relative;
+      user-select: none;
+    }
+
+    .key {
+      position: relative;
+      cursor: pointer;
+      border-radius: 0 0 6px 6px;
+      transition: background 0.05s;
+    }
+
+    .white {
+      width: 52px;
+      height: 200px;
+      background: #f5f0e8;
+      border: 1px solid #888;
+      z-index: 1;
+    }
+
+    .white:hover, .white.active {
+      background: #d4c97a;
+    }
+
+    .black {
+      width: 34px;
+      height: 126px;
+      background: #1a1a1a;
+      border: 1px solid #000;
+      margin-left: -17px;
+      margin-right: -17px;
+      z-index: 2;
+      border-radius: 0 0 4px 4px;
+    }
+
+    .black:hover, .black.active {
+      background: #555;
+    }
+
+    .key-label {
+      position: absolute;
+      bottom: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 11px;
+      color: #888;
+      pointer-events: none;
+    }
+
+    .black .key-label {
+      color: #aaa;
+      bottom: 6px;
+    }
+
+    #hint {
+      margin-top: 24px;
+      font-size: 0.85rem;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <h1>Piano</h1>
+  <div id="keyboard"></div>
+  <p id="hint">Click keys or use keyboard: A S D F G H J &nbsp;|&nbsp; W E &nbsp;T Y U</p>
+
+  <script>
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const ctx = new AudioContext();
+
+    // Notes: two octaves starting at C4
+    const notes = [
+      { note: 'C4',  freq: 261.63, type: 'white', kb: 'a' },
+      { note: 'C#4', freq: 277.18, type: 'black', kb: 'w' },
+      { note: 'D4',  freq: 293.66, type: 'white', kb: 's' },
+      { note: 'D#4', freq: 311.13, type: 'black', kb: 'e' },
+      { note: 'E4',  freq: 329.63, type: 'white', kb: 'd' },
+      { note: 'F4',  freq: 349.23, type: 'white', kb: 'f' },
+      { note: 'F#4', freq: 369.99, type: 'black', kb: 't' },
+      { note: 'G4',  freq: 392.00, type: 'white', kb: 'g' },
+      { note: 'G#4', freq: 415.30, type: 'black', kb: 'y' },
+      { note: 'A4',  freq: 440.00, type: 'white', kb: 'h' },
+      { note: 'A#4', freq: 466.16, type: 'black', kb: 'u' },
+      { note: 'B4',  freq: 493.88, type: 'white', kb: 'j' },
+      { note: 'C5',  freq: 523.25, type: 'white', kb: 'k' },
+      { note: 'C#5', freq: 554.37, type: 'black', kb: 'o' },
+      { note: 'D5',  freq: 587.33, type: 'white', kb: 'l' },
+      { note: 'D#5', freq: 622.25, type: 'black', kb: 'p' },
+      { note: 'E5',  freq: 659.25, type: 'white', kb: ';' },
+    ];
+
+    const kbMap = {};
+    const keyboard = document.getElementById('keyboard');
+
+    notes.forEach(({ note, freq, type, kb }) => {
+      const el = document.createElement('div');
+      el.className = `key ${type}`;
+      el.dataset.note = note;
+
+      const label = document.createElement('span');
+      label.className = 'key-label';
+      label.textContent = kb.toUpperCase();
+      el.appendChild(label);
+
+      keyboard.appendChild(el);
+      kbMap[kb] = { el, freq };
+
+      el.addEventListener('mousedown', () => playNote(freq, el));
+    });
+
+    function playNote(freq, el) {
+      ctx.resume();
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, ctx.currentTime);
+
+      gain.gain.setValueAtTime(0.5, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.5);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start();
+      osc.stop(ctx.currentTime + 1.5);
+
+      el.classList.add('active');
+      setTimeout(() => el.classList.remove('active'), 200);
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.repeat) return;
+      const entry = kbMap[e.key.toLowerCase()];
+      if (entry) playNote(entry.freq, entry.el);
+    });
+  </script>
+</body>
+</html>

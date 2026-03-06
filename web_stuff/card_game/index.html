@@ -284,6 +284,41 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
 .log-system  { color: #888; font-style: italic; }
 .log-win     { color: #e65100; font-weight: bold; font-size: 1.05em; }
 
+/* ── AI ANNOUNCE BANNER ── */
+#ai-announce {
+  position: fixed;
+  top: 48%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.85);
+  background: rgba(140, 0, 0, 0.93);
+  color: #fff;
+  font-size: 1.55em;
+  font-weight: bold;
+  padding: 16px 34px;
+  border-radius: 14px;
+  border: 3px solid #ff6666;
+  z-index: 150;
+  pointer-events: none;
+  text-align: center;
+  box-shadow: 0 6px 36px rgba(0,0,0,0.55);
+  opacity: 0;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  white-space: nowrap;
+  max-width: 88vw;
+}
+#ai-announce.show {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+#ai-announce .banner-label {
+  display: block;
+  font-size: 0.52em;
+  letter-spacing: 2px;
+  color: #ffaaaa;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
 /* ── OVERLAY ── */
 #overlay {
   display: none;
@@ -367,6 +402,9 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
   <div id="sidebar-title">&#x1F37D; Food Battles &#x1F37D;</div>
   <div id="game-log"></div>
 </div>
+
+<!-- AI announce banner -->
+<div id="ai-announce"><span class="banner-label">Burger Bot plays</span><span id="ai-announce-body"></span></div>
 
 <!-- End overlay -->
 <div id="overlay">
@@ -494,6 +532,9 @@ const DB = {
 
   // Creatures (food fighters)
   goblin:    { name:'Strawberry',     type:'creature', cost:1, power:1, toughness:1, art:'&#x1F353;', bg:'#ad1457', abilities:[] },
+  cherry:    { name:'Cherry',         type:'creature', cost:1, power:1, toughness:1, art:'&#x1F352;', bg:'#b71c1c', abilities:['flying'] },
+  corn:      { name:'Corn',           type:'creature', cost:1, power:0, toughness:2, art:'&#x1F33D;', bg:'#f9a825', abilities:[] },
+  banana:    { name:'Banana',         type:'creature', cost:1, power:2, toughness:1, art:'&#x1F34C;', bg:'#e65100', abilities:[] },
   wolf:      { name:'Broccoli',       type:'creature', cost:2, power:2, toughness:2, art:'&#x1F966;', bg:'#2e7d32', abilities:[] },
   golem:     { name:'Tin Can',        type:'creature', cost:3, power:2, toughness:4, art:'&#x1F96B;', bg:'#37474f', abilities:[] },
   giant:     { name:'Burger',         type:'creature', cost:3, power:3, toughness:3, art:'&#x1F354;', bg:'#bf360c', abilities:[] },
@@ -506,11 +547,13 @@ const DB = {
   bolt:      { name:'Lightning Bolt', type:'spell', cost:1, art:'&#x26A1;', bg:'#f57f17',
                target:'any',          effect:'damage',     amount:3, desc:'Deal 3 damage to any target.' },
   salve:     { name:'Healing Salve',  type:'spell', cost:1, art:'&#x1F49A;', bg:'#1b5e20',
-               target:'none',         effect:'heal',       amount:4, desc:'Gain 4 life.' },
+               target:'none',         effect:'heal',       amount:3, desc:'Gain 3 life.' },
   ritual:    { name:'Dark Ritual',    type:'spell', cost:1, art:'&#x1F56F;', bg:'#4a148c',
                target:'none',         effect:'mana',       amount:3, desc:'Add 3 calories to your pool.' },
   growth:    { name:'Giant Growth',   type:'spell', cost:1, art:'&#x1F33F;', bg:'#33691e',
                target:'creature_own', effect:'pump',       amount:3, desc:'Target creature gets +3/+3 this turn.' },
+  syrup:     { name:'Sticky Syrup',   type:'spell', cost:2, art:'&#x1F36F;', bg:'#e65100',
+               target:'creature_any', effect:'stun',                desc:'Tap target creature. It can\'t attack or block until its next turn.' },
   scroll:    { name:'Mystic Scroll',  type:'spell', cost:2, art:'&#x1F4DC;', bg:'#1a237e',
                target:'none',         effect:'draw',       amount:2, desc:'Draw 2 cards.' },
   plague:    { name:'Plague Cloud',   type:'spell', cost:3, art:'&#x2601;',  bg:'#558b2f',
@@ -524,10 +567,11 @@ const DB = {
 // Deck recipe: [id, count]
 const DECK_RECIPE = [
   ['energy',16],
-  ['goblin',3],['wolf',2],['golem',2],['giant',2],['drake',2],['elephant',1],['serpent',1],['colossus',1],
-  ['bolt',3],['salve',1],['ritual',1],['growth',1],['scroll',1],['plague',1],['fireball',1],['destroy',1],
+  ['goblin',2],['cherry',2],['corn',2],['banana',2],
+  ['wolf',2],['golem',2],['giant',2],['drake',2],['elephant',1],['serpent',1],['colossus',1],
+  ['bolt',3],['salve',1],['ritual',1],['growth',1],['syrup',2],['scroll',1],['plague',1],['fireball',1],['destroy',1],
 ];
-// Total: 16 lands + 14 creatures + 10 spells = 40 cards
+// Total: 16 lands + 17 creatures + 10 spells = 43 cards
 
 // ============================================================
 // STATE
@@ -790,6 +834,12 @@ function applyEffect(who, card, target) {
         .forEach(c => dealDmg(c, card.amount, card.name));
       cleanDead();
       break;
+    case 'stun':
+      if (target && target.uid) {
+        target.tapped = true;
+        log(`${target.name} is covered in syrup and can't move!`, 'combat');
+      }
+      break;
     case 'destroy':
       if (target && target.uid) {
         const own = ownerOf(target.uid);
@@ -873,9 +923,8 @@ function assignAiBlockers() {
   const atkCards = G.attackers.map(u => G.player.field.find(c => c.uid === u)).filter(Boolean);
   const avail = creatures('ai').filter(c => !c.tapped);
   G.aiBlockers = {};
-  const used = new Set();
 
-  // Sort attackers: dangerous first
+  const used = new Set();
   const sorted = [...atkCards].sort((a,b) => (b.power+b.pumpP) - (a.power+a.pumpP));
 
   for (const atk of sorted) {
@@ -883,8 +932,8 @@ function assignAiBlockers() {
     const at = atk.toughness + atk.pumpT;
     const canFly = atk.abilities?.includes('flying');
 
+    // First priority: favourable trade (blocker kills attacker and survives)
     let best = null;
-    // Find ideal blocker: kills attacker and survives
     for (const blk of avail) {
       if (used.has(blk.uid)) continue;
       if (canFly && !blk.abilities?.includes('flying')) continue;
@@ -892,16 +941,17 @@ function assignAiBlockers() {
       const bt = blk.toughness + blk.pumpT;
       if (bp >= at && bt > ap) { best = blk; break; }
     }
-    // Fall back: any blocker that kills attacker
-    if (!best) {
+
+    // Second priority: block threats dealing more than 2 damage even if it's a trade
+    if (!best && ap > 2) {
       for (const blk of avail) {
         if (used.has(blk.uid)) continue;
         if (canFly && !blk.abilities?.includes('flying')) continue;
-        const bp = blk.power + blk.pumpP;
-        if (bp >= at) { best = blk; break; }
+        best = blk; break;
       }
     }
-    // Desperate: block to save life
+
+    // Last resort: block anything when facing lethal total damage
     if (!best) {
       const unblockedDmg = sorted
         .filter(a => !G.aiBlockers[a.uid])
@@ -954,13 +1004,25 @@ function resolvePvAICombat() {
     G.phase = PHASE.MAIN;
     render();
     checkWin();
-    if (G.phase !== PHASE.OVER) setStatus('Combat resolved. Play more cards or end your turn.');
+    if (G.phase !== PHASE.OVER) endTurn();
   }, 700);
 }
 
 // ============================================================
 // AI TURN
 // ============================================================
+function showAiBanner(cardArt, cardName, cardInfo, subtext) {
+  const el = document.getElementById('ai-announce');
+  const body = document.getElementById('ai-announce-body');
+  let html = `${cardArt} <strong>${cardName}</strong>`;
+  if (cardInfo) html += `<br><span style="font-size:0.58em;color:#ffe0b2;font-weight:normal">${cardInfo}</span>`;
+  if (subtext) html += `<br><span style="font-size:0.55em;color:#ffcccc;font-weight:normal">${subtext}</span>`;
+  body.innerHTML = html;
+  el.classList.add('show');
+  clearTimeout(el._hideTimer);
+  el._hideTimer = setTimeout(() => el.classList.remove('show'), 2400);
+}
+
 function runAiTurn() {
   if (G.turn !== 'ai') return;
 
@@ -975,28 +1037,53 @@ function runAiTurn() {
     handLand.tapped = true;
   }
 
-  // Cast spells/creatures greedily (most expensive affordable first)
-  let cast = true;
-  while (cast) {
-    cast = false;
-    const affordable = G.ai.hand
-      .filter(c => c.type !== 'land' && c.cost <= G.ai.mana)
-      .sort((a,b) => b.cost - a.cost);
-    const card = aiPickCard(affordable);
-    if (card) {
-      const target = aiPickTarget(card);
-      if (target !== false) {
-        castCard('ai', card, target);
-        cast = true;
-      }
-    }
-  }
-
   render();
+  // Chain card plays one at a time so each gets a banner + delay
+  aiPlayNext();
+}
+
+function aiPlayNext() {
   if (G.phase === PHASE.OVER) return;
 
-  // Attack
+  const affordable = G.ai.hand
+    .filter(c => c.type !== 'land' && c.cost <= G.ai.mana)
+    .sort((a,b) => b.cost - a.cost);
+  const card = aiPickCard(affordable);
+  if (!card) { aiDoAttack(); return; }
+
+  const target = aiPickTarget(card);
+  if (target === false) { aiDoAttack(); return; }
+
+  // Build card info line (stats or effect description)
+  let cardInfo = '';
+  if (card.type === 'creature') {
+    cardInfo = `${card.power}/${card.toughness}`;
+    if (card.abilities?.length) cardInfo += ` &middot; ${card.abilities.join(', ')}`;
+  } else if (card.desc) {
+    cardInfo = card.desc;
+  }
+
+  // Build subtext describing what the spell targets
+  let subtext = '';
+  if (target === 'player') subtext = '&#x2192; targets YOU!';
+  else if (target === 'ai') subtext = '&#x2192; targets Burger Bot';
+  else if (target && target.name) {
+    const owner = ownerOf(target.uid);
+    subtext = `&#x2192; targets ${owner === 'player' ? 'your' : 'their'} ${target.name}`;
+  }
+
+  showAiBanner(card.art, card.name, cardInfo, subtext);
+
+  // Cast after banner has had a moment to register, then chain next play
   setTimeout(() => {
+    castCard('ai', card, target);
+    if (G.phase !== PHASE.OVER) setTimeout(aiPlayNext, 400);
+  }, 1600);
+}
+
+function aiDoAttack() {
+  setTimeout(() => {
+    if (G.phase === PHASE.OVER) return;
     const atkers = creatures('ai').filter(c => !c.tapped && !c.summoningSick);
     if (atkers.length) {
       G.attackers = atkers.map(c => c.uid);
@@ -1014,13 +1101,12 @@ function runAiTurn() {
 
 function aiPickCard(affordable) {
   if (!affordable.length) return null;
-  const playerCrs = creatures('player');
-  // Prefer removal if player has threats
-  const removal = affordable.find(c => c.effect === 'destroy' || (c.effect === 'damage' && playerCrs.length > 0));
-  if (removal && playerCrs.length > 0) return removal;
+  // Play cheapest creature first (leaves mana on the table, less threatening)
   const crs = affordable.filter(c => c.type === 'creature');
-  if (crs.length) return crs[0];
-  return affordable[0];
+  if (crs.length) return crs[crs.length - 1];
+  // Cast spells (including removal), cheapest first
+  if (affordable.length) return affordable[affordable.length - 1];
+  return null;
 }
 
 function aiPickTarget(card) {
