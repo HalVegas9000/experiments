@@ -1,0 +1,1202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Star Quest</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0d1b0f;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'Courier New', monospace;
+  }
+  h1 {
+    color: #ffd700;
+    font-size: 2rem;
+    margin-bottom: 12px;
+    text-shadow: 0 0 14px #ffaa00, 0 0 28px #ff6600;
+    letter-spacing: 4px;
+  }
+  canvas {
+    border: 3px solid #3a5a30;
+    display: block;
+    box-shadow: 0 0 40px rgba(0,0,0,0.9);
+  }
+  p {
+    color: #557755;
+    font-size: 0.82rem;
+    margin-top: 10px;
+    letter-spacing: 1px;
+  }
+</style>
+</head>
+<body>
+<h1>✦ STAR QUEST ✦</h1>
+<canvas id="game" width="640" height="480"></canvas>
+<p>Arrow Keys / WASD to move &nbsp;·&nbsp; Collect all 10 stars &nbsp;·&nbsp; Find the sword &amp; press <strong style="color:#adf">Space</strong> to attack!</p>
+
+<script>
+// ─── Constants ───────────────────────────────────────────────────────────────
+const W = 640, H = 480;
+const WALL = 32;       // wall thickness
+const DOOR_W = 80;     // door opening width
+const GRID_W = 4, GRID_H = 3;
+const TOTAL_STARS = 10;
+const CX = W / 2;     // horizontal door center (N/S walls)
+const CY = H / 2;     // vertical door center (E/W walls)
+const DH = DOOR_W / 2;
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+// ─── Audio (Web Audio API, lazy-init on first gesture) ───────────────────────
+let _ac = null;
+function getAC() {
+  if (!_ac) _ac = new (window.AudioContext || window.webkitAudioContext)();
+  return _ac;
+}
+
+// Play a single synthesised tone
+function tone(freq, type, dur, vol = 0.3, delay = 0) {
+  const a = getAC(), t = a.currentTime + delay;
+  const osc = a.createOscillator(), gain = a.createGain();
+  osc.connect(gain); gain.connect(a.destination);
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  gain.gain.setValueAtTime(vol, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  osc.start(t); osc.stop(t + dur + 0.02);
+}
+
+// Frequency-sweep tone
+function sweep(f0, f1, type, dur, vol = 0.3, delay = 0) {
+  const a = getAC(), t = a.currentTime + delay;
+  const osc = a.createOscillator(), gain = a.createGain();
+  osc.connect(gain); gain.connect(a.destination);
+  osc.type = type;
+  osc.frequency.setValueAtTime(f0, t);
+  osc.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  gain.gain.setValueAtTime(vol, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  osc.start(t); osc.stop(t + dur + 0.02);
+}
+
+function sfxStar()   {
+  // Bright ascending arpeggio
+  [523, 659, 784, 1047].forEach((f, i) => tone(f, 'sine', 0.13, 0.32, i * 0.09));
+}
+function sfxSword()  {
+  // Rising shimmer sweep
+  sweep(200, 1400, 'sine', 0.35, 0.38);
+  tone(1400, 'sine', 0.45, 0.2, 0.32);
+  tone(1760, 'sine', 0.3,  0.15, 0.5);
+}
+function sfxKill()   {
+  // Low crunch
+  tone(130, 'sawtooth', 0.12, 0.4);
+  tone(80,  'square',   0.18, 0.28, 0.07);
+}
+function sfxHit()    {
+  // Sharp buzz
+  tone(220, 'square',   0.08, 0.42);
+  tone(150, 'sawtooth', 0.12, 0.28, 0.06);
+}
+function sfxDeath()  {
+  // Descending sad melody
+  [392, 330, 262, 196].forEach((f, i) => tone(f, 'sine', 0.28, 0.35, i * 0.23));
+}
+function sfxWin()    {
+  // Victory fanfare
+  [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, 'sine', 0.28, 0.4, i * 0.14));
+}
+function sfxShoot()  {
+  // Ink-blob bloop (quiet)
+  sweep(480, 160, 'sine', 0.16, 0.13);
+}
+function sfxProjectileHit() {
+  tone(300, 'square', 0.08, 0.22);
+}
+
+// ─── Background Music ─────────────────────────────────────────────────────────
+const M_BPM  = 120;
+const M_STEP = 60 / M_BPM / 2;   // 0.25 s per 8th-note
+
+// 4-bar A-minor adventure loop (32 eighth-note steps)
+//   null = rest / held note
+const M_MEL = [
+  330, 392, 440, 330,  294, 262, 294, 330,   // bar 1  – rises to A4, falls back
+  220, 262, 330, 294,  262, 247, 220, null,   // bar 2  – descends to A3
+  330, 392, 440, 330,  294, 330, 392, 440,    // bar 3  – climbing variation
+  392, 330, 294, 262,  294, 330, 220, null,   // bar 4  – resolves to A3
+];
+const M_BASS = [
+  110, null, 110, null,  110, null, 110, null,  // Am
+  131, null, 131, null,   98, null,  98, null,  // C  → G
+  110, null, 110, null,  147, null, 147, null,  // Am → D
+  165, null, 165, null,  110, null, 110, null,  // E  → Am
+];
+
+let musicTimer = null, musicTime = 0, musicStep = 0, musicGain = null;
+
+function _musicNote(freq, type, dur, vol, when) {
+  if (!freq) return;
+  const a = getAC(), osc = a.createOscillator(), g = a.createGain();
+  osc.connect(g); g.connect(musicGain);
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, when);
+  g.gain.setValueAtTime(0, when);
+  g.gain.linearRampToValueAtTime(vol, when + 0.01);
+  g.gain.setValueAtTime(vol, when + dur * 0.75);
+  g.gain.linearRampToValueAtTime(0, when + dur * 0.96);
+  osc.start(when); osc.stop(when + dur + 0.01);
+}
+
+function _musicTick() {
+  const a = getAC();
+  while (musicTime < a.currentTime + 0.15) {
+    const i = musicStep % M_MEL.length;
+    _musicNote(M_MEL[i],  'square',   M_STEP * 0.82, 0.07, musicTime);
+    _musicNote(M_BASS[i], 'triangle', M_STEP * 0.72, 0.12, musicTime);
+    musicTime += M_STEP;
+    musicStep++;
+  }
+}
+
+function startMusic() {
+  if (musicTimer) return;
+  const a = getAC();
+  if (!musicGain) {
+    musicGain = a.createGain();
+    musicGain.connect(a.destination);
+  }
+  // Fade in
+  musicGain.gain.cancelScheduledValues(a.currentTime);
+  musicGain.gain.setValueAtTime(0, a.currentTime);
+  musicGain.gain.linearRampToValueAtTime(0.5, a.currentTime + 1.0);
+  musicTime = a.currentTime + 0.05;
+  musicTimer = setInterval(_musicTick, 50);
+}
+
+function stopMusic(fadeSecs = 0) {
+  clearInterval(musicTimer);
+  musicTimer = null;
+  if (fadeSecs > 0 && musicGain) {
+    const a = getAC();
+    musicGain.gain.cancelScheduledValues(a.currentTime);
+    musicGain.gain.setValueAtTime(musicGain.gain.value, a.currentTime);
+    musicGain.gain.linearRampToValueAtTime(0, a.currentTime + fadeSecs);
+  }
+}
+
+// ─── Input ───────────────────────────────────────────────────────────────────
+const keys = {};
+let attackPressed = false;
+window.addEventListener('keydown', e => {
+  keys[e.key] = true;
+  if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown',' '].includes(e.key)) e.preventDefault();
+  if (e.key === ' ') attackPressed = true;
+  if ((e.key === 'r' || e.key === 'R') && state !== 'playing') reset();
+  startMusic(); // no-op after first call; satisfies browser autoplay policy
+});
+window.addEventListener('keyup', e => { keys[e.key] = false; });
+
+// ─── Room templates ──────────────────────────────────────────────────────────
+// stars: [{x,y}]  enemies: [{x,y,axis:'x'|'y',min,max,spd}]
+// 12 rooms (4 cols × 3 rows), 10 total stars
+const TEMPLATES = [
+  // ── Row 0 ───────────────────────────────────────────────────────────────
+  { stars: [{x:160,y:200}],
+    enemies: [{x:360,y:220,axis:'x',min:80,max:560,spd:1.3}] },                              // (0,0)
+  { stars: [{x:320,y:210}],
+    enemies: [] },                                                                             // (1,0)
+  { stars: [],
+    enemies: [{x:300,y:140,axis:'y',min:60,max:400,spd:1.5},
+              {x:480,y:300,axis:'x',min:120,max:560,spd:1.2}] },                             // (2,0)
+  { stars: [{x:480,y:190}],
+    enemies: [{x:290,y:290,axis:'x',min:80,max:560,spd:2.0},
+              {type:'octo',x:170,y:170,shootInterval:130}] },                                // (3,0)
+  // ── Row 1 ───────────────────────────────────────────────────────────────
+  { stars: [],
+    enemies: [{x:200,y:240,axis:'y',min:60,max:420,spd:1.4}] },                              // (0,1)
+  { stars: [],
+    enemies: [] },                                                                             // (1,1) START
+  { stars: [{x:220,y:180},{x:450,y:340}],
+    enemies: [{x:320,y:240,axis:'x',min:80,max:560,spd:1.8}] },                              // (2,1)
+  { stars: [{x:500,y:240}],
+    enemies: [{x:200,y:150,axis:'y',min:60,max:400,spd:1.6},
+              {x:400,y:360,axis:'x',min:100,max:560,spd:1.3}] },                             // (3,1)
+  // ── Row 2 ───────────────────────────────────────────────────────────────
+  { stars: [{x:160,y:300}],
+    enemies: [{x:300,y:240,axis:'x',min:60,max:560,spd:1.5},
+              {x:160,y:180,axis:'y',min:60,max:400,spd:1.2}] },                              // (0,2)
+  { stars: [],
+    enemies: [{x:320,y:200,axis:'x',min:80,max:560,spd:1.4},
+              {type:'octo',x:180,y:370,shootInterval:150}] },                                // (1,2)
+  { stars: [{x:350,y:240}],
+    enemies: [{x:180,y:180,axis:'x',min:80,max:560,spd:1.7},
+              {x:480,y:310,axis:'y',min:60,max:400,spd:2.0},
+              {type:'octo',x:320,y:370,shootInterval:110}] },                                // (2,2)
+  { stars: [{x:200,y:200},{x:490,y:320}],
+    enemies: [{x:330,y:240,axis:'x',min:80,max:560,spd:1.6}] },                              // (3,2)
+];
+// Star count check: 1+1+0+1 + 0+0+2+1 + 1+0+1+2 = 10 ✓
+
+// ─── Build rooms ─────────────────────────────────────────────────────────────
+function buildRooms() {
+  const grid = [];
+  for (let gy = 0; gy < GRID_H; gy++) {
+    grid[gy] = [];
+    for (let gx = 0; gx < GRID_W; gx++) {
+      const t = TEMPLATES[gy * GRID_W + gx];
+      grid[gy][gx] = {
+        gx, gy,
+        doors: { N: gy > 0, S: gy < GRID_H-1, W: gx > 0, E: gx < GRID_W-1 },
+        stars:   t.stars.map(s => ({ x: s.x, y: s.y, collected: false })),
+        enemies: t.enemies.map(e => ({
+          ...e,
+          type: e.type || 'patrol',
+          dir: 1,
+          size: e.type === 'octo' ? 24 : 16,
+          hitTimer: 0,
+          dead: false,
+          ...(e.type === 'octo' ? { shootTimer: 40 + Math.floor(Math.random() * 70) } : {}),
+        })),
+        visited: false,
+      };
+    }
+  }
+  return grid;
+}
+
+// ─── Game state ──────────────────────────────────────────────────────────────
+let rooms, curRoom, player, starsGot, state, trans, particles, projectiles, frame;
+
+function makePlayer() {
+  return { x: CX, y: CY, size: 20, spd: 3, hp: 3, maxHp: 3,
+           facing: 'down', iframes: 0, hasSword: false, attackTimer: 0 };
+}
+
+// sword item: placed in room (gx=0, gy=1) – the left-middle room
+let sword; // { room, x, y, picked }
+
+function reset() {
+  rooms     = buildRooms();
+  curRoom   = rooms[1][1];
+  curRoom.visited = true;
+  player    = makePlayer();
+  starsGot  = 0;
+  state     = 'playing';
+  trans     = null;     // { nextRoom, playerTo:{x,y}, t }
+  particles = [];
+  frame     = 0;
+  attackPressed = false;
+  projectiles = [];
+  stopMusic();
+  if (_ac) startMusic();
+  // Pick a random room (not the start room) for the sword
+  const swordCandidates = [];
+  for (let gy = 0; gy < GRID_H; gy++)
+    for (let gx = 0; gx < GRID_W; gx++)
+      if (!(gx === 1 && gy === 1)) swordCandidates.push(rooms[gy][gx]);
+  const swordRoom = swordCandidates[Math.floor(Math.random() * swordCandidates.length)];
+  sword = {
+    room: swordRoom,
+    x: WALL + 60 + Math.floor(Math.random() * (W - (WALL + 60) * 2)),
+    y: WALL + 60 + Math.floor(Math.random() * (H - (WALL + 60) * 2)),
+    picked: false,
+  };
+}
+reset();
+
+// ─── Wall rectangles for a room ──────────────────────────────────────────────
+function wallRects(room) {
+  const r = [];
+  // North wall (with optional door gap)
+  if (room.doors.N) {
+    r.push({x:0,      y:0,      w:CX-DH,      h:WALL});
+    r.push({x:CX+DH,  y:0,      w:W-(CX+DH),  h:WALL});
+  } else { r.push({x:0,y:0,w:W,h:WALL}); }
+  // South wall
+  if (room.doors.S) {
+    r.push({x:0,      y:H-WALL, w:CX-DH,      h:WALL});
+    r.push({x:CX+DH,  y:H-WALL, w:W-(CX+DH),  h:WALL});
+  } else { r.push({x:0,y:H-WALL,w:W,h:WALL}); }
+  // West wall
+  if (room.doors.W) {
+    r.push({x:0, y:0,      w:WALL, h:CY-DH});
+    r.push({x:0, y:CY+DH,  w:WALL, h:H-(CY+DH)});
+  } else { r.push({x:0,y:0,w:WALL,h:H}); }
+  // East wall
+  if (room.doors.E) {
+    r.push({x:W-WALL, y:0,      w:WALL, h:CY-DH});
+    r.push({x:W-WALL, y:CY+DH,  w:WALL, h:H-(CY+DH)});
+  } else { r.push({x:W-WALL,y:0,w:WALL,h:H}); }
+  return r;
+}
+
+function overlaps(ax,ay,aw,ah, bx,by,bw,bh) {
+  return ax < bx+bw && ax+aw > bx && ay < by+bh && ay+ah > by;
+}
+
+// ─── Collision-aware movement ─────────────────────────────────────────────────
+function moveObj(obj, dx, dy, room) {
+  const walls = wallRects(room);
+  const hs = obj.size / 2;
+  obj.x += dx;
+  for (const w of walls) {
+    if (overlaps(obj.x-hs, obj.y-hs, obj.size, obj.size, w.x, w.y, w.w, w.h))
+      obj.x = dx > 0 ? w.x - hs : w.x + w.w + hs;
+  }
+  obj.y += dy;
+  for (const w of walls) {
+    if (overlaps(obj.x-hs, obj.y-hs, obj.size, obj.size, w.x, w.y, w.w, w.h))
+      obj.y = dy > 0 ? w.y - hs : w.y + w.h + hs;
+  }
+}
+
+// ─── Particle burst ──────────────────────────────────────────────────────────
+function burst(x, y, color, n = 16) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const spd = 1.5 + Math.random() * 2.5;
+    particles.push({ x, y, vx: Math.cos(a)*spd, vy: Math.sin(a)*spd,
+                     life: 38, max: 38, r: 2 + Math.random()*3, color });
+  }
+}
+
+// ─── Begin room transition ────────────────────────────────────────────────────
+function beginTrans(dir) {
+  if (trans) return;
+  let ngx = curRoom.gx, ngy = curRoom.gy;
+  if (dir === 'N') ngy--;
+  if (dir === 'S') ngy++;
+  if (dir === 'W') ngx--;
+  if (dir === 'E') ngx++;
+  if (ngx < 0 || ngx >= GRID_W || ngy < 0 || ngy >= GRID_H) return;
+
+  // Player entry position in new room (opposite side of door)
+  const hs = player.size / 2;
+  let px = player.x, py = player.y;
+  if (dir === 'N') py = H - WALL - hs - 2;
+  if (dir === 'S') py = WALL + hs + 2;
+  if (dir === 'W') px = W - WALL - hs - 2;
+  if (dir === 'E') px = WALL + hs + 2;
+
+  trans = { nextRoom: rooms[ngy][ngx], playerTo: {x: px, y: py}, t: 0 };
+  projectiles = [];
+}
+
+// ─── Attack hitbox ────────────────────────────────────────────────────────────
+function attackHitbox() {
+  const reach = 52, wide = 40, hs = player.size / 2;
+  switch (player.facing) {
+    case 'up':    return { x: player.x - wide/2, y: player.y - hs - reach, w: wide, h: reach };
+    case 'down':  return { x: player.x - wide/2, y: player.y + hs,         w: wide, h: reach };
+    case 'left':  return { x: player.x - hs - reach, y: player.y - wide/2, w: reach, h: wide };
+    case 'right': return { x: player.x + hs,          y: player.y - wide/2, w: reach, h: wide };
+  }
+}
+
+// ─── Update ──────────────────────────────────────────────────────────────────
+function update() {
+  frame++;
+
+  // Transition animation
+  if (trans) {
+    trans.t += 0.065;
+    if (trans.t >= 1) {
+      curRoom = trans.nextRoom;
+      curRoom.visited = true;
+      player.x = trans.playerTo.x;
+      player.y = trans.playerTo.y;
+      trans = null;
+    }
+    return;
+  }
+
+  if (state !== 'playing') return;
+
+  // ── Player movement ────────────────────────────────────────────────────
+  let dx = 0, dy = 0;
+  if (keys['ArrowLeft']  || keys['a'] || keys['A']) dx -= player.spd;
+  if (keys['ArrowRight'] || keys['d'] || keys['D']) dx += player.spd;
+  if (keys['ArrowUp']    || keys['w'] || keys['W']) dy -= player.spd;
+  if (keys['ArrowDown']  || keys['s'] || keys['S']) dy += player.spd;
+  if (dx && dy) { dx *= 0.707; dy *= 0.707; }
+
+  if      (dx < 0) player.facing = 'left';
+  else if (dx > 0) player.facing = 'right';
+  else if (dy < 0) player.facing = 'up';
+  else if (dy > 0) player.facing = 'down';
+
+  moveObj(player, dx, dy, curRoom);
+  if (player.iframes > 0) player.iframes--;
+  if (player.attackTimer > 0) player.attackTimer--;
+
+  // ── Sword attack ───────────────────────────────────────────────────────
+  if (attackPressed && player.hasSword && player.attackTimer === 0) {
+    player.attackTimer = 20;
+    const hb = attackHitbox();
+    for (const e of curRoom.enemies) {
+      if (!e.dead && overlaps(e.x - e.size/2, e.y - e.size/2, e.size, e.size,
+                              hb.x, hb.y, hb.w, hb.h)) {
+        e.dead = true;
+        sfxKill();
+        burst(e.x, e.y, '#ff4422', 12);
+        burst(e.x, e.y, '#ffaa00', 6);
+      }
+    }
+    // Deflect projectiles caught in the swing
+    for (let i = projectiles.length - 1; i >= 0; i--) {
+      const p = projectiles[i];
+      if (overlaps(p.x - p.size, p.y - p.size, p.size*2, p.size*2, hb.x, hb.y, hb.w, hb.h)) {
+        burst(p.x, p.y, '#cc88ff', 6);
+        projectiles.splice(i, 1);
+      }
+    }
+  }
+  attackPressed = false;
+
+  // ── Room transition check ──────────────────────────────────────────────
+  const hs = player.size / 2;
+  const inXGap = player.x > CX - DH + hs && player.x < CX + DH - hs;
+  const inYGap = player.y > CY - DH + hs && player.y < CY + DH - hs;
+
+  if      (curRoom.doors.N && player.y - hs < WALL     && inXGap) beginTrans('N');
+  else if (curRoom.doors.S && player.y + hs > H - WALL && inXGap) beginTrans('S');
+  else if (curRoom.doors.W && player.x - hs < WALL     && inYGap) beginTrans('W');
+  else if (curRoom.doors.E && player.x + hs > W - WALL && inYGap) beginTrans('E');
+
+  // ── Sword pickup ───────────────────────────────────────────────────────
+  if (!sword.picked && sword.room === curRoom) {
+    if (Math.hypot(player.x - sword.x, player.y - sword.y) < player.size / 2 + 14) {
+      sword.picked = true;
+      player.hasSword = true;
+      sfxSword();
+      burst(sword.x, sword.y, '#88ccff', 14);
+      burst(sword.x, sword.y, '#ffffff', 6);
+    }
+  }
+
+  // ── Enemies ────────────────────────────────────────────────────────────
+  for (const e of curRoom.enemies) {
+    if (e.dead) continue;
+
+    if (e.type === 'octo') {
+      // Octopus: stationary, shoots toward player on a timer
+      e.shootTimer--;
+      if (e.shootTimer <= 0) {
+        e.shootTimer = e.shootInterval;
+        const ddx = player.x - e.x, ddy = player.y - e.y;
+        const dist = Math.hypot(ddx, ddy);
+        if (dist > 0) {
+          sfxShoot();
+          projectiles.push({ x: e.x, y: e.y,
+                             vx: ddx / dist * 3.5, vy: ddy / dist * 3.5, size: 6 });
+        }
+      }
+    } else {
+      // Patrol enemy
+      if (e.axis === 'x') {
+        e.x += e.spd * e.dir;
+        if (e.x > e.max || e.x < e.min) {
+          e.dir *= -1;
+          e.x = Math.max(e.min, Math.min(e.max, e.x));
+        }
+      } else {
+        e.y += e.spd * e.dir;
+        if (e.y > e.max || e.y < e.min) {
+          e.dir *= -1;
+          e.y = Math.max(e.min, Math.min(e.max, e.y));
+        }
+      }
+    }
+
+    if (e.hitTimer > 0) e.hitTimer--;
+
+    // Touch collision with player (both types)
+    if (player.iframes === 0) {
+      const dist = Math.hypot(player.x - e.x, player.y - e.y);
+      if (dist < (player.size + e.size) / 2) {
+        player.hp--;
+        player.iframes = 80;
+        e.hitTimer = 12;
+        burst(player.x, player.y, '#e74c3c', 8);
+        if (player.hp <= 0) { sfxDeath(); stopMusic(1.5); state = 'dead'; return; }
+        sfxHit();
+        const ang = Math.atan2(player.y - e.y, player.x - e.x);
+        player.x = Math.max(WALL + hs, Math.min(W - WALL - hs, player.x + Math.cos(ang) * 36));
+        player.y = Math.max(WALL + hs, Math.min(H - WALL - hs, player.y + Math.sin(ang) * 36));
+      }
+    }
+  }
+
+  // ── Projectiles ────────────────────────────────────────────────────────
+  const pWalls = wallRects(curRoom);
+  for (let i = projectiles.length - 1; i >= 0; i--) {
+    const p = projectiles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+
+    // Wall collision
+    let hitWall = false;
+    for (const w of pWalls) {
+      if (overlaps(p.x - p.size, p.y - p.size, p.size*2, p.size*2, w.x, w.y, w.w, w.h)) {
+        hitWall = true; break;
+      }
+    }
+    if (hitWall || p.x < 0 || p.x > W || p.y < 0 || p.y > H) {
+      if (hitWall) sfxProjectileHit();
+      projectiles.splice(i, 1);
+      continue;
+    }
+
+    // Player collision
+    if (player.iframes === 0 && Math.hypot(p.x - player.x, p.y - player.y) < player.size/2 + p.size) {
+      player.hp--;
+      player.iframes = 80;
+      burst(p.x, p.y, '#aa44ff', 8);
+      projectiles.splice(i, 1);
+      if (player.hp <= 0) { sfxDeath(); state = 'dead'; return; }
+      sfxHit();
+    }
+  }
+
+  // ── Star collection ────────────────────────────────────────────────────
+  for (const s of curRoom.stars) {
+    if (!s.collected && Math.hypot(player.x - s.x, player.y - s.y) < hs + 14) {
+      s.collected = true;
+      starsGot++;
+      sfxStar();
+      burst(s.x, s.y, '#ffd700');
+      burst(s.x, s.y, '#fff', 6);
+      if (starsGot >= TOTAL_STARS) { sfxWin(); stopMusic(1.0); state = 'won'; return; }
+    }
+  }
+
+  // ── Particles ──────────────────────────────────────────────────────────
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy;
+    p.vx *= 0.93; p.vy *= 0.93;
+    if (--p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+// ─── Drawing ─────────────────────────────────────────────────────────────────
+const TILE = 40;
+
+function drawFloor() {
+  for (let ty = 0; ty * TILE < H; ty++) {
+    for (let tx = 0; tx * TILE < W; tx++) {
+      // Subtle checkerboard grass
+      ctx.fillStyle = (tx + ty) % 2 === 0 ? '#3a6b42' : '#3f7348';
+      ctx.fillRect(tx * TILE, ty * TILE, TILE, TILE);
+    }
+  }
+  // Subtle inner border shadow
+  ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+  ctx.lineWidth = 1;
+  for (let ty = 0; ty * TILE < H; ty++) {
+    for (let tx = 0; tx * TILE < W; tx++) {
+      ctx.strokeRect(tx * TILE + 0.5, ty * TILE + 0.5, TILE - 1, TILE - 1);
+    }
+  }
+}
+
+function drawWalls(room) {
+  const rects = wallRects(room);
+  for (const r of rects) {
+    // Stone base
+    ctx.fillStyle = '#6b5b45';
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    // Brick pattern
+    ctx.strokeStyle = '#4a3e2d';
+    ctx.lineWidth = 1.5;
+    const BW = 32, BH = 16;
+    for (let row = 0; row * BH < r.h; row++) {
+      const off = row % 2 === 0 ? 0 : BW / 2;
+      for (let col = -1; col * BW < r.w; col++) {
+        const bx = Math.max(r.x + col * BW + off, r.x);
+        const by = Math.max(r.y + row * BH, r.y);
+        const bw = Math.min(r.x + (col+1) * BW + off, r.x + r.w) - bx;
+        const bh = Math.min(r.y + (row+1) * BH, r.y + r.h) - by;
+        if (bw > 0 && bh > 0) ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
+      }
+    }
+    // Highlight edge
+    ctx.fillStyle = 'rgba(255,255,255,0.07)';
+    ctx.fillRect(r.x, r.y, r.w, 2);
+    // Shadow edge
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(r.x, r.y + r.h - 2, r.w, 2);
+  }
+
+  // Door passages (dark openings)
+  ctx.fillStyle = '#1a2e1a';
+  if (room.doors.N) ctx.fillRect(CX - DH, 0,      DOOR_W, WALL);
+  if (room.doors.S) ctx.fillRect(CX - DH, H-WALL, DOOR_W, WALL);
+  if (room.doors.W) ctx.fillRect(0,      CY - DH, WALL, DOOR_W);
+  if (room.doors.E) ctx.fillRect(W-WALL, CY - DH, WALL, DOOR_W);
+
+  // Torches at wall corners (decoration)
+  const torchPositions = [
+    [WALL + 10, WALL + 10],
+    [W - WALL - 10, WALL + 10],
+    [WALL + 10, H - WALL - 10],
+    [W - WALL - 10, H - WALL - 10],
+  ];
+  for (const [tx, ty] of torchPositions) {
+    const flicker = 0.7 + 0.3 * Math.sin(frame * 0.18 + tx);
+    ctx.save();
+    ctx.shadowColor = '#ff8800';
+    ctx.shadowBlur = 16 * flicker;
+    ctx.fillStyle = `rgba(255,${Math.floor(150 + 80*flicker)},0,${flicker})`;
+    ctx.beginPath();
+    ctx.arc(tx, ty, 5 * flicker, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawStar(s) {
+  if (s.collected) return;
+  const pulse = 1 + 0.12 * Math.sin(frame * 0.045 + s.x * 0.1);
+  const r = 11 * pulse;
+
+  ctx.save();
+  ctx.translate(s.x, s.y);
+  ctx.shadowColor = '#ffd700';
+  ctx.shadowBlur = 14 + 6 * Math.sin(frame * 0.07);
+
+  // 5-point star
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = (i * Math.PI / 5) - Math.PI / 2;
+    const rad = i % 2 === 0 ? r : r * 0.42;
+    const x = Math.cos(a) * rad, y = Math.sin(a) * rad;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fillStyle = '#ffe545';
+  ctx.fill();
+  ctx.strokeStyle = '#ff9900';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawSwordItem() {
+  if (sword.picked || sword.room !== curRoom) return;
+  const { x, y } = sword;
+  const bob = Math.sin(frame * 0.07) * 3;
+
+  ctx.save();
+  ctx.translate(x, y + bob);
+  // Glow
+  ctx.shadowColor = '#66aaff';
+  ctx.shadowBlur = 14 + 6 * Math.sin(frame * 0.08);
+
+  // Blade (diagonal, top-right to bottom-left)
+  ctx.strokeStyle = '#c8e8ff';
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-14, 14);
+  ctx.lineTo(14, -14);
+  ctx.stroke();
+
+  // Guard (crosspiece)
+  ctx.strokeStyle = '#d4aa50';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(-6, -6);
+  ctx.lineTo(6, 6);
+  ctx.stroke();
+
+  // Handle
+  ctx.strokeStyle = '#8b5e3c';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(-14, 14);
+  ctx.lineTo(-20, 20);
+  ctx.stroke();
+
+  // Pommel
+  ctx.fillStyle = '#d4aa50';
+  ctx.shadowBlur = 0;
+  ctx.beginPath();
+  ctx.arc(-20, 20, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawAttack() {
+  if (!player.hasSword || player.attackTimer <= 0) return;
+  const t = player.attackTimer / 20; // 1 → 0
+
+  ctx.save();
+  ctx.translate(player.x, player.y);
+
+  // Sword direction
+  const angles = { right: 0, down: Math.PI/2, left: Math.PI, up: -Math.PI/2 };
+  const baseAngle = angles[player.facing];
+
+  // Slash arc: sweeps 90° around the facing direction
+  const sweepStart = baseAngle - Math.PI/2 * t;
+  const sweepEnd   = baseAngle + Math.PI/2 * (1 - t);
+  const arcR = 46;
+
+  ctx.globalAlpha = t * 0.7;
+  ctx.strokeStyle = '#aaddff';
+  ctx.lineWidth = 5;
+  ctx.lineCap = 'round';
+  ctx.shadowColor = '#ffffff';
+  ctx.shadowBlur = 12;
+  ctx.beginPath();
+  ctx.arc(0, 0, arcR, sweepStart, sweepEnd);
+  ctx.stroke();
+
+  // Sword blade drawn at current sweep position
+  const bladeAngle = sweepStart + (sweepEnd - sweepStart) * 0.5;
+  const bx = Math.cos(bladeAngle), by = Math.sin(bladeAngle);
+  ctx.globalAlpha = 0.9 * t;
+  ctx.strokeStyle = '#e8f4ff';
+  ctx.lineWidth = 3;
+  ctx.shadowBlur = 8;
+  ctx.beginPath();
+  ctx.moveTo(bx * (player.size / 2), by * (player.size / 2));
+  ctx.lineTo(bx * (arcR + 10), by * (arcR + 10));
+  ctx.stroke();
+
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
+function drawOctopus(e) {
+  ctx.save();
+  ctx.translate(e.x, e.y);
+  if (e.hitTimer > 0 && e.hitTimer % 3 < 2) ctx.globalAlpha = 0.35;
+
+  const s = e.size / 2;  // 12
+  const bob = Math.sin(frame * 0.07 + e.x * 0.05) * 2;
+
+  // Tentacles (6, wiggly)
+  ctx.strokeStyle = '#7d3c98';
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 6; i++) {
+    const baseA = (i / 6) * Math.PI * 2;
+    const wave  = Math.sin(frame * 0.1 + i * 1.4) * 6;
+    const mx = Math.cos(baseA) * s * 1.6 + Math.sin(baseA) * wave;
+    const my = bob + Math.sin(baseA) * s * 1.6 - Math.cos(baseA) * wave;
+    const ex = Math.cos(baseA) * s * 2.8 + Math.sin(baseA) * wave * 0.3;
+    const ey = bob + Math.sin(baseA) * s * 2.8 - Math.cos(baseA) * wave * 0.3;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(baseA) * s * 0.85, bob + Math.sin(baseA) * s * 0.85);
+    ctx.quadraticCurveTo(mx, my, ex, ey);
+    ctx.stroke();
+  }
+
+  // Body
+  ctx.shadowColor = '#9b59b6';
+  ctx.shadowBlur = 12;
+  ctx.fillStyle = '#8e44ad';
+  ctx.beginPath();
+  ctx.arc(0, bob, s, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#6c3483';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Mantle dome on top
+  ctx.fillStyle = '#a569bd';
+  ctx.beginPath();
+  ctx.ellipse(0, bob - s * 0.45, s * 0.72, s * 0.88, 0, Math.PI, 0);
+  ctx.fill();
+
+  // Eyes (track the player)
+  const pdx = player.x - e.x, pdy = player.y - e.y;
+  const pa  = Math.atan2(pdy, pdx);
+  const po  = 2.5;
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.ellipse(-s*0.36, bob - s*0.12, s*0.26, s*0.30, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse( s*0.36, bob - s*0.12, s*0.26, s*0.30, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle = '#111';
+  ctx.beginPath();
+  ctx.arc(-s*0.36 + Math.cos(pa)*po, bob - s*0.12 + Math.sin(pa)*po, s*0.14, 0, Math.PI*2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc( s*0.36 + Math.cos(pa)*po, bob - s*0.12 + Math.sin(pa)*po, s*0.14, 0, Math.PI*2);
+  ctx.fill();
+
+  // Charge-up ring when about to fire
+  if (e.shootTimer < 35) {
+    const charge = 1 - e.shootTimer / 35;
+    ctx.globalAlpha = (ctx.globalAlpha || 1) * charge * 0.85;
+    ctx.shadowColor = '#cc44ff';
+    ctx.shadowBlur = 18 * charge;
+    ctx.strokeStyle = `rgba(180,80,255,${charge})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, bob, s + 5 + charge * 3, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  ctx.restore();
+}
+
+function drawProjectiles() {
+  for (const p of projectiles) {
+    ctx.save();
+    ctx.shadowColor = '#9b59b6';
+    ctx.shadowBlur = 10;
+    // Ink-blob body
+    ctx.fillStyle = '#9b59b6';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fill();
+    // Shine
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.beginPath();
+    ctx.arc(p.x - p.size * 0.3, p.y - p.size * 0.32, p.size * 0.35, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawEnemy(e) {
+  if (e.dead) return;
+  if (e.type === 'octo') { drawOctopus(e); return; }
+  ctx.save();
+  ctx.translate(e.x, e.y);
+  if (e.hitTimer > 0 && e.hitTimer % 3 < 2) ctx.globalAlpha = 0.35;
+
+  const s = e.size / 2;
+  const bob = Math.sin(frame * 0.11) * 2;
+
+  // Glow
+  ctx.shadowColor = '#ff2222';
+  ctx.shadowBlur = 8;
+
+  // Body
+  ctx.fillStyle = '#c0392b';
+  ctx.beginPath();
+  ctx.arc(0, bob, s, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#7b241c';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Horns
+  ctx.fillStyle = '#922b21';
+  ctx.beginPath();
+  ctx.moveTo(-s*0.5, bob-s*0.7); ctx.lineTo(-s*0.8, bob-s*1.3); ctx.lineTo(-s*0.15, bob-s*0.8);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(s*0.5, bob-s*0.7); ctx.lineTo(s*0.8, bob-s*1.3); ctx.lineTo(s*0.15, bob-s*0.8);
+  ctx.fill();
+
+  // Eyes
+  const ew = s * 0.42, eh = s * 0.38;
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(-s*0.55, bob-s*0.3, ew, eh);
+  ctx.fillRect(s*0.13, bob-s*0.3, ew, eh);
+  ctx.fillStyle = '#111';
+  const ex = e.dir * 2;
+  ctx.fillRect(-s*0.4+ex, bob-s*0.2, ew*0.5, eh*0.6);
+  ctx.fillRect(s*0.28+ex, bob-s*0.2, ew*0.5, eh*0.6);
+
+  ctx.restore();
+}
+
+function drawPlayer() {
+  // Flash during invincibility
+  if (player.iframes > 0 && player.iframes % 6 < 3) return;
+
+  ctx.save();
+  ctx.translate(player.x, player.y);
+  const s = player.size / 2;
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(0, s * 0.9, s * 0.85, s * 0.3, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Body (green tunic)
+  ctx.fillStyle = '#27ae60';
+  ctx.beginPath();
+  ctx.arc(0, 0, s, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#1a7a44';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Face/direction indicator
+  let fx = 0, fy = 0;
+  if (player.facing === 'up')    fy = -s * 0.58;
+  if (player.facing === 'down')  fy =  s * 0.58;
+  if (player.facing === 'left')  fx = -s * 0.58;
+  if (player.facing === 'right') fx =  s * 0.58;
+
+  // Face circle
+  ctx.fillStyle = '#f0c080';
+  ctx.beginPath();
+  ctx.arc(fx, fy, 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Hat tip (triangle pointing in facing direction)
+  ctx.fillStyle = '#229954';
+  ctx.beginPath();
+  const hx = fx * 1.5, hy = fy * 1.5;
+  const perp = player.facing === 'up' || player.facing === 'down' ? 4 : 0;
+  const perpv = player.facing === 'left' || player.facing === 'right' ? 4 : 0;
+  ctx.moveTo(hx, hy);
+  ctx.lineTo(hx + perpv, hy + perp);
+  ctx.lineTo(hx - perpv, hy - perp);
+  ctx.closePath();
+  ctx.fill();
+
+  // Sword in hand (when held and not swinging)
+  if (player.hasSword && player.attackTimer === 0) {
+    // Offset to the right of facing direction
+    const angles = { right: 0, down: Math.PI/2, left: Math.PI, up: -Math.PI/2 };
+    const a = angles[player.facing] - Math.PI / 2.5; // slightly to the side
+    const hsx = Math.cos(a) * (s + 4);
+    const hsy = Math.sin(a) * (s + 4);
+    ctx.shadowColor = '#88ccff';
+    ctx.shadowBlur = 6;
+    ctx.strokeStyle = '#c8e8ff';
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(hsx, hsy);
+    ctx.lineTo(hsx + Math.cos(angles[player.facing]) * 14,
+               hsy + Math.sin(angles[player.facing]) * 14);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  ctx.restore();
+}
+
+function drawHeart(cx, cy, r, filled) {
+  ctx.beginPath();
+  ctx.moveTo(cx, cy + r * 0.9);
+  ctx.bezierCurveTo(cx - r*2, cy + r*0.2, cx - r*2, cy - r*0.8, cx, cy - r*0.1);
+  ctx.bezierCurveTo(cx + r*2, cy - r*0.8, cx + r*2, cy + r*0.2, cx, cy + r*0.9);
+  ctx.closePath();
+  ctx.fillStyle = filled ? '#e74c3c' : '#3a2222';
+  ctx.fill();
+  ctx.strokeStyle = filled ? '#922b21' : '#5a3232';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
+function drawHUD() {
+  // Hearts
+  for (let i = 0; i < player.maxHp; i++) {
+    drawHeart(16 + i * 26, 18, 7, i < player.hp);
+  }
+
+  // Star counter (top right)
+  ctx.font = 'bold 15px Courier New';
+  ctx.fillStyle = '#ffd700';
+  ctx.shadowColor = '#ff8800';
+  ctx.shadowBlur = 6;
+  ctx.textAlign = 'right';
+  ctx.fillText(`★ ${starsGot} / ${TOTAL_STARS}`, W - 10, 24);
+  ctx.shadowBlur = 0;
+  ctx.textAlign = 'left';
+
+  // Sword icon (when held)
+  if (player.hasSword) {
+    const ix = W / 2 - 30, iy = 10;
+    ctx.save();
+    ctx.translate(ix, iy + 10);
+    ctx.shadowColor = '#88ccff';
+    ctx.shadowBlur = player.attackTimer > 0 ? 18 : 6;
+    ctx.strokeStyle = player.attackTimer > 0 ? '#ffffff' : '#c8e8ff';
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-8, 8); ctx.lineTo(8, -8);
+    ctx.stroke();
+    // Guard
+    ctx.strokeStyle = '#d4aa50';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(-3, -3); ctx.lineTo(3, 3);
+    ctx.stroke();
+    ctx.fillStyle = '#d4aa50';
+    ctx.shadowBlur = 0;
+    ctx.beginPath();
+    ctx.arc(-8, 8, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.fillStyle = '#aaddff';
+    ctx.font = '11px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('SPACE', W / 2, 28);
+    ctx.textAlign = 'left';
+  }
+}
+
+function drawMinimap() {
+  const RW = 14, RH = 10, GAP = 3;
+  const mapW = GRID_W * (RW + GAP) - GAP;
+  const mapH = GRID_H * (RH + GAP) - GAP;
+  const ox = W - mapW - 10;
+  const oy = H - mapH - 10;
+
+  // Background panel
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(ox - 4, oy - 4, mapW + 8, mapH + 8);
+
+  for (let gy = 0; gy < GRID_H; gy++) {
+    for (let gx = 0; gx < GRID_W; gx++) {
+      const r = rooms[gy][gx];
+      const rx = ox + gx * (RW + GAP);
+      const ry = oy + gy * (RH + GAP);
+
+      if (r === curRoom) {
+        ctx.fillStyle = '#00ff88';
+      } else if (r === sword.room && !sword.picked) {
+        // Cyan regardless of whether the room has been visited yet
+        ctx.fillStyle = '#44ddff';
+      } else if (r.visited) {
+        const hasStars = r.stars.some(s => !s.collected);
+        ctx.fillStyle = hasStars ? '#ccaa00' : '#556655';
+      } else {
+        ctx.fillStyle = '#1a2a1a';
+      }
+      ctx.fillRect(rx, ry, RW, RH);
+
+      // Outline
+      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(rx, ry, RW, RH);
+    }
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.globalAlpha = p.life / p.max;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawOverlay() {
+  if (state === 'playing') return;
+
+  ctx.fillStyle = 'rgba(0,0,0,0.74)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.textAlign = 'center';
+
+  if (state === 'won') {
+    // Animated star sparkles
+    for (let i = 0; i < 6; i++) {
+      const a = (frame * 0.03 + i * Math.PI / 3);
+      const sx = CX + Math.cos(a) * 140;
+      const sy = H/2 - 20 + Math.sin(a) * 40;
+      ctx.fillStyle = '#ffd700';
+      ctx.font = '20px serif';
+      ctx.fillText('★', sx - 10, sy);
+    }
+    ctx.shadowColor = '#ffaa00';
+    ctx.shadowBlur = 30;
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 54px Courier New';
+    ctx.fillText('YOU WIN!', CX, H/2 - 40);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#ccffcc';
+    ctx.font = '22px Courier New';
+    ctx.fillText('All 10 stars collected!', CX, H/2 + 12);
+    ctx.fillStyle = '#888';
+    ctx.font = '15px Courier New';
+    ctx.fillText('Press R to play again', CX, H/2 + 50);
+  }
+
+  if (state === 'dead') {
+    ctx.shadowColor = '#c0392b';
+    ctx.shadowBlur = 30;
+    ctx.fillStyle = '#e74c3c';
+    ctx.font = 'bold 54px Courier New';
+    ctx.fillText('GAME OVER', CX, H/2 - 40);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#fff';
+    ctx.font = '22px Courier New';
+    ctx.fillText(`Stars collected: ${starsGot} / ${TOTAL_STARS}`, CX, H/2 + 12);
+    ctx.fillStyle = '#888';
+    ctx.font = '15px Courier New';
+    ctx.fillText('Press R to try again', CX, H/2 + 50);
+  }
+
+  ctx.textAlign = 'left';
+}
+
+// ─── Main draw ────────────────────────────────────────────────────────────────
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  // During transition: crossfade between rooms
+  const roomToDraw = (trans && trans.t >= 0.5) ? trans.nextRoom : curRoom;
+
+  drawFloor();
+  drawWalls(roomToDraw);
+
+  for (const s of roomToDraw.stars) drawStar(s);
+
+  if (!trans) {
+    // Only draw live entities when not transitioning
+    drawSwordItem();
+    for (const e of curRoom.enemies) drawEnemy(e);
+    drawProjectiles();
+    drawParticles();
+    drawAttack();
+    drawPlayer();
+  }
+
+  drawHUD();
+  drawMinimap();
+
+  // Fade overlay for room transition
+  if (trans) {
+    const alpha = trans.t < 0.5 ? trans.t * 2 : (1 - trans.t) * 2;
+    ctx.fillStyle = `rgba(0,0,0,${alpha.toFixed(3)})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  drawOverlay();
+}
+
+// ─── Game loop ────────────────────────────────────────────────────────────────
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
