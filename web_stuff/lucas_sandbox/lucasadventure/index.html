@@ -37,7 +37,7 @@
 <body>
 <h1>✦ STAR QUEST ✦</h1>
 <canvas id="game" width="640" height="480"></canvas>
-<p>Arrow Keys / WASD to move &nbsp;·&nbsp; Collect all 10 stars &nbsp;·&nbsp; Find the sword &amp; press <strong style="color:#adf">Space</strong> to attack!</p>
+<p>Arrow Keys / WASD to move &nbsp;·&nbsp; <strong style="color:#adf">Space</strong> = sword &nbsp;·&nbsp; <strong style="color:#ffd">E</strong> = bow &nbsp;·&nbsp; <strong style="color:#fda">M</strong> = achievements &nbsp;·&nbsp; Defeat the boss!</p>
 
 <script>
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -52,6 +52,17 @@ const DH = DOOR_W / 2;
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
+
+// ─── Achievements ─────────────────────────────────────────────────────────────
+const ACHIEVS = [
+  { id: 'sword',   icon: '⚔',  title: 'Armed & Dangerous', desc: 'Found the sword'              },
+  { id: 'bow',     icon: '🏹', title: 'Sharpshooter',      desc: 'Found the bow'                },
+  { id: 'stars',   icon: '★',  title: 'Star Collector',    desc: 'Collected all 12 stars'       },
+  { id: 'potion',  icon: '🧪', title: 'Bottoms Up',         desc: 'Drank the hidden health potion'  },
+  { id: 'hat',     icon: '🎩', title: 'What a Find!',       desc: 'Found the secret hat',  secret: true },
+  { id: 'cleanse', icon: '💀', title: 'Exterminator',      desc: 'Cleared every main-area room' },
+  { id: 'boss',    icon: '👑', title: 'Warlord Slayer',    desc: 'Defeated the Shadow Warlord'  },
+];
 
 // ─── Audio (Web Audio API, lazy-init on first gesture) ───────────────────────
 let _ac = null;
@@ -126,27 +137,117 @@ function sfxHeal() {
   tone(554, 'sine', 0.18, 0.22, 0.11);
   tone(659, 'sine', 0.24, 0.28, 0.22);
 }
+function sfxBossHit() {
+  tone(90, 'sawtooth', 0.18, 0.55);
+  tone(55, 'square',   0.25, 0.30, 0.1);
+}
+function sfxBossRoar() {
+  sweep(80, 40, 'sawtooth', 0.7, 0.5);
+  tone(100, 'square', 0.45, 0.22, 0.2);
+}
+function sfxLaserCharge() { sweep(300, 2200, 'sine', 1.4, 0.22); }
+function sfxLaserFire() {
+  tone(1800, 'square',   0.35, 0.38);
+  tone(1200, 'sawtooth', 0.35, 0.22, 0.04);
+}
+function sfxBurstFire() { sweep(600, 150, 'square', 0.2, 0.25); }
+function sfxBowPickup() {
+  sweep(300, 800, 'sine', 0.28, 0.3);
+  tone(880, 'sine', 0.2, 0.18, 0.25);
+}
+function sfxBowShoot() {
+  // Bowstring twang
+  sweep(600, 80, 'sawtooth', 0.18, 0.28);
+  tone(200, 'triangle', 0.12, 0.18, 0.06);
+}
+function sfxArrowHit() {
+  tone(180, 'square', 0.1, 0.35);
+  tone(120, 'sawtooth', 0.12, 0.22, 0.05);
+}
+function sfxWallBreak() {
+  tone(220, 'sawtooth', 0.28, 0.5);
+  tone(140, 'square',   0.35, 0.4, 0.1);
+  tone(80,  'sawtooth', 0.45, 0.3, 0.22);
+}
+function sfxHatPickup() {
+  sweep(400, 1400, 'sine', 0.3, 0.28);
+  tone(1400, 'sine', 0.22, 0.2, 0.28);
+  tone(1760, 'sine', 0.18, 0.15, 0.46);
+}
+function sfxUnlock() {
+  [220, 294, 370, 440, 554].forEach((f, i) => tone(f, 'square', 0.3, 0.35, i * 0.12));
+  sweep(440, 880, 'sine', 0.5, 0.2, 0.65);
+}
 
 // ─── Background Music ─────────────────────────────────────────────────────────
 const M_BPM  = 120;
 const M_STEP = 60 / M_BPM / 2;   // 0.25 s per 8th-note
 
-// 4-bar A-minor adventure loop (32 eighth-note steps)
+// 8-bar A-minor adventure loop (64 eighth-note steps)
 //   null = rest / held note
 const M_MEL = [
+  // ── Part A ──────────────────────────────────────────────────────────────────
   330, 392, 440, 330,  294, 262, 294, 330,   // bar 1  – rises to A4, falls back
   220, 262, 330, 294,  262, 247, 220, null,   // bar 2  – descends to A3
   330, 392, 440, 330,  294, 330, 392, 440,    // bar 3  – climbing variation
   392, 330, 294, 262,  294, 330, 220, null,   // bar 4  – resolves to A3
+  // ── Part B (new) ────────────────────────────────────────────────────────────
+  440, 494, 523, 494,  440, 392, 440, 494,   // bar 5  – high run on C-major
+  523, 494, 440, 392,  330, 294, 262, null,   // bar 6  – cascade down
+  262, 294, 330, 392,  440, 392, 330, 294,   // bar 7  – ripple up and back
+  330, 294, 262, 247,  220, 247, 262, null,   // bar 8  – descend to tonic rest
 ];
+
+// Harmony counter-melody (sine, quieter) — thirds/sixths above melody
+const M_HAR = [
+  // ── Part A harmony ──────────────────────────────────────────────────────────
+  392, 494, 523, 392,  370, 330, 370, 392,   // bar 1
+  262, 330, 392, 370,  330, 294, 262, null,   // bar 2
+  392, 494, 523, 392,  370, 392, 494, 523,   // bar 3
+  494, 392, 370, 330,  370, 392, 262, null,   // bar 4
+  // ── Part B harmony ──────────────────────────────────────────────────────────
+  523, 587, 659, 587,  523, 494, 523, 587,   // bar 5
+  659, 587, 523, 494,  392, 370, 330, null,   // bar 6
+  330, 370, 392, 494,  523, 494, 392, 370,   // bar 7
+  392, 370, 330, 294,  262, 294, 330, null,   // bar 8
+];
+
 const M_BASS = [
+  // ── Part A ──────────────────────────────────────────────────────────────────
   110, null, 110, null,  110, null, 110, null,  // Am
   131, null, 131, null,   98, null,  98, null,  // C  → G
   110, null, 110, null,  147, null, 147, null,  // Am → D
   165, null, 165, null,  110, null, 110, null,  // E  → Am
+  // ── Part B (new) ────────────────────────────────────────────────────────────
+  131, null, 131, null,  131, null, 131, null,  // C
+  117, null, 117, null,   98, null,  98, null,  // Bb → G
+  110, null, 110, null,  165, null, 165, null,  // Am → E
+  131, null, 131, null,  110, null, 110, null,  // C  → Am
 ];
 
 let musicTimer = null, musicTime = 0, musicStep = 0, musicGain = null;
+let bossMusicMode = false;
+
+// ── Boss theme: 4-bar D-minor, 150 BPM ───────────────────────────────────────
+const B_BPM  = 150;
+const B_STEP = 60 / B_BPM / 2;   // 0.2 s per 8th-note
+
+const B_MEL = [
+  // Bar 1 – Ominous D-minor pulse
+  294, null, 311, 294,   262, null, 233, null,
+  // Bar 2 – Chromatic rise
+  262, 294, 311, 349,    330, 311, 294, null,
+  // Bar 3 – High menace descending
+  392, null, 370, 349,   330, 294, 311, null,
+  // Bar 4 – Crash and fall
+  440, 392, 349, 311,    294, 262, 233, null,
+];
+const B_BASS = [
+  73, null,  73, null,   73, null,  87, null,   // D2 pound → F2
+  65, null,  65, null,   82, null,  73, null,   // C2 → E2 → D2
+  73, null,  98, null,   87, null,  82, null,   // D2 → G2 → F2 → E2
+  110,null,  98, null,   87, null,  73, null,   // A2 → G2 → F2 → D2
+];
 
 function _musicNote(freq, type, dur, vol, when) {
   if (!freq) return;
@@ -161,15 +262,80 @@ function _musicNote(freq, type, dur, vol, when) {
   osc.start(when); osc.stop(when + dur + 0.01);
 }
 
+function _kick(when) {
+  const a = getAC(), osc = a.createOscillator(), g = a.createGain();
+  osc.connect(g); g.connect(musicGain);
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(110, when);
+  osc.frequency.exponentialRampToValueAtTime(40, when + 0.09);
+  g.gain.setValueAtTime(0.28, when);
+  g.gain.linearRampToValueAtTime(0, when + 0.09);
+  osc.start(when); osc.stop(when + 0.1);
+}
+
+function _hat(when) {
+  const a = getAC(), osc = a.createOscillator(), g = a.createGain();
+  osc.connect(g); g.connect(musicGain);
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(6000, when);
+  g.gain.setValueAtTime(0.022, when);
+  g.gain.linearRampToValueAtTime(0, when + 0.035);
+  osc.start(when); osc.stop(when + 0.04);
+}
+
+function _snare(when) {
+  // White-noise snare via AudioBuffer
+  const a = getAC();
+  const buf = a.createBuffer(1, Math.ceil(a.sampleRate * 0.12), a.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  const src = a.createBufferSource(), g = a.createGain();
+  src.buffer = buf;
+  src.connect(g); g.connect(musicGain);
+  g.gain.setValueAtTime(0.18, when);
+  g.gain.linearRampToValueAtTime(0, when + 0.1);
+  src.start(when); src.stop(when + 0.13);
+}
+
 function _musicTick() {
   const a = getAC();
+  const step = bossMusicMode ? B_STEP : M_STEP;
+  const mel  = bossMusicMode ? B_MEL  : M_MEL;
+  const bass = bossMusicMode ? B_BASS : M_BASS;
+
   while (musicTime < a.currentTime + 0.15) {
-    const i = musicStep % M_MEL.length;
-    _musicNote(M_MEL[i],  'square',   M_STEP * 0.82, 0.07, musicTime);
-    _musicNote(M_BASS[i], 'triangle', M_STEP * 0.72, 0.12, musicTime);
-    musicTime += M_STEP;
+    const i = musicStep % mel.length;
+    if (bossMusicMode) {
+      _musicNote(mel[i],  'sawtooth', step * 0.78, 0.09, musicTime);
+      _musicNote(bass[i], 'triangle', step * 0.70, 0.16, musicTime);
+      if (musicStep % 8 === 0 || musicStep % 8 === 4) _kick(musicTime);
+      if (musicStep % 8 === 2 || musicStep % 8 === 6) _snare(musicTime);
+      _hat(musicTime);
+    } else {
+      _musicNote(mel[i],   'square',   step * 0.82, 0.07, musicTime);
+      _musicNote(M_HAR[i], 'sine',     step * 0.78, 0.04, musicTime);
+      _musicNote(bass[i],  'triangle', step * 0.72, 0.12, musicTime);
+      if (musicStep % 8 === 0 || musicStep % 8 === 4) _kick(musicTime);
+      _hat(musicTime);
+    }
+    musicTime += step;
     musicStep++;
   }
+}
+
+function switchMusic(toBoss) {
+  clearInterval(musicTimer); musicTimer = null;
+  bossMusicMode = toBoss;
+  musicStep = 0;
+  if (!_ac || !musicGain) return;
+  const a = getAC();
+  // Fade out then fade in new theme
+  musicGain.gain.cancelScheduledValues(a.currentTime);
+  musicGain.gain.setValueAtTime(musicGain.gain.value, a.currentTime);
+  musicGain.gain.linearRampToValueAtTime(0,   a.currentTime + 0.4);
+  musicGain.gain.linearRampToValueAtTime(0.5, a.currentTime + 1.1);
+  musicTime  = a.currentTime + 0.55;   // start after fade-out gap
+  musicTimer = setInterval(_musicTick, 50);
 }
 
 function startMusic() {
@@ -205,6 +371,8 @@ window.addEventListener('keydown', e => {
   keys[e.key] = true;
   if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown',' '].includes(e.key)) e.preventDefault();
   if (e.key === ' ') attackPressed = true;
+  if (e.key === 'e' || e.key === 'E') { shootPressed = true; e.preventDefault(); }
+  if (e.key === 'm' || e.key === 'M') showAchievMenu = !showAchievMenu;
   if ((e.key === 'r' || e.key === 'R') && state !== 'playing') reset();
   startMusic(); // no-op after first call; satisfies browser autoplay policy
 });
@@ -290,10 +458,14 @@ function buildRooms() {
 
 // ─── Game state ──────────────────────────────────────────────────────────────
 let rooms, curRoom, player, starsGot, state, trans, particles, projectiles, frame;
+let bossRoom, boss, bossUnlocked, announceTimer, bossRoomPotions;
+let bow, bowCooldown, shootPressed;
+let achievements, achievPopups, showAchievMenu;
+let secretRoom, wallBroken, hat;
 
 function makePlayer() {
   return { x: CX, y: CY, size: 20, spd: 3, hp: 3, maxHp: 3,
-           facing: 'down', iframes: 0, hasSword: false, attackTimer: 0 };
+           facing: 'down', iframes: 0, hasSword: false, hasBow: false, hasHat: false, attackTimer: 0 };
 }
 
 // sword item: placed in room (gx=0, gy=1) – the left-middle room
@@ -312,6 +484,10 @@ function reset() {
   frame     = 0;
   attackPressed = false;
   projectiles = [];
+  bossMusicMode    = false;
+  achievements     = {};
+  achievPopups     = [];
+  showAchievMenu   = false;
   stopMusic();
   if (_ac) startMusic();
   // Pick a random room (not the start room) for the sword
@@ -336,6 +512,55 @@ function reset() {
     y: WALL + 60 + Math.floor(Math.random() * (H - (WALL + 60) * 2)),
     picked: false,
   };
+
+  // Pick a random room for the bow (not start, not sword, not potion)
+  const bowCandidates = potionCandidates.filter(r => r !== potionRoom);
+  const bowRoom = bowCandidates[Math.floor(Math.random() * bowCandidates.length)];
+  bow = {
+    room: bowRoom,
+    x: WALL + 60 + Math.floor(Math.random() * (W - (WALL + 60) * 2)),
+    y: WALL + 60 + Math.floor(Math.random() * (H - (WALL + 60) * 2)),
+    picked: false,
+  };
+  bowCooldown  = 0;
+  shootPressed = false;
+
+  // ── Boss room (unlocks south of room [2][2] when all stars collected) ──
+  bossUnlocked  = false;
+  announceTimer = 0;
+  bossRoom = {
+    gx: 2, gy: 3,
+    doors: { N: false, S: false, W: false, E: false },
+    stars: [], enemies: [],
+    visited: false, isBossRoom: true,
+  };
+  boss = {
+    x: CX, y: CY - 40,
+    size: 72, hp: 15, maxHp: 15,
+    hitTimer: 0, dead: false,
+    vx: 1.3, vy: 0.9,
+    spawnTimer: 220,
+    burstTimer: 190,
+    laserState: 'idle',   // 'idle' | 'charging' | 'firing'
+    laserTimer: 380,
+    laserChargeTimer: 0,
+    laserFireTimer: 0,
+    laserAngle: 0,
+    laserStartX: 0, laserStartY: 0,
+    laserEndX: 0,   laserEndY: 0,
+    potionSpawnTimer: 420,
+  };
+  bossRoomPotions = [];
+
+  // ── Secret room (west of room [0][1], opened by shooting cracked wall) ──
+  wallBroken = false;
+  secretRoom = {
+    gx: -1, gy: 1,
+    doors: { N: false, S: false, W: false, E: false },
+    stars: [], enemies: [],
+    visited: false, isSecretRoom: true,
+  };
+  hat = { x: CX, y: CY, picked: false };
 }
 reset();
 
@@ -395,15 +620,181 @@ function burst(x, y, color, n = 16) {
   }
 }
 
+// ─── Achievement helpers ──────────────────────────────────────────────────────
+function sfxAchiev() {
+  [523, 659, 784, 1047].forEach((f, i) => tone(f, 'sine', 0.22, 0.28, i * 0.09));
+}
+
+function unlockAchiev(id) {
+  if (achievements[id]) return;
+  achievements[id] = true;
+  achievPopups.push({ id, timer: 260 });
+  sfxAchiev();
+}
+
+function checkAllMainEnemiesDead() {
+  if (achievements['cleanse']) return;
+  for (let gy = 0; gy < GRID_H; gy++)
+    for (let gx = 0; gx < GRID_W; gx++)
+      for (const e of rooms[gy][gx].enemies)
+        if (!e.dead) return;
+  unlockAchiev('cleanse');
+}
+
+// ─── Ray to wall (for laser endpoint) ────────────────────────────────────────
+function rayToWall(ox, oy, angle) {
+  const cos = Math.cos(angle), sin = Math.sin(angle);
+  let tmin = Infinity;
+  if (cos >  0.001) tmin = Math.min(tmin, (W - WALL - ox) / cos);
+  if (cos < -0.001) tmin = Math.min(tmin, (WALL - ox) / cos);
+  if (sin >  0.001) tmin = Math.min(tmin, (H - WALL - oy) / sin);
+  if (sin < -0.001) tmin = Math.min(tmin, (WALL - oy) / sin);
+  return { x: ox + cos * tmin, y: oy + sin * tmin };
+}
+
+// ─── Point-to-segment distance (for laser hit detection) ─────────────────────
+function distToSegment(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.hypot(px - x1, py - y1);
+  const t = Math.max(0, Math.min(1, ((px-x1)*dx + (py-y1)*dy) / lenSq));
+  return Math.hypot(px - (x1 + t*dx), py - (y1 + t*dy));
+}
+
+// ─── Boss update ──────────────────────────────────────────────────────────────
+function updateBoss() {
+  if (!boss || boss.dead) return;
+  if (boss.hitTimer > 0) boss.hitTimer--;
+
+  const hpFrac = boss.hp / boss.maxHp;
+  const phase   = hpFrac > 0.667 ? 1 : hpFrac > 0.333 ? 2 : 3;
+  const sMul    = phase === 1 ? 1 : phase === 2 ? 1.45 : 1.9;
+
+  // ── Movement – slow drift, nudge toward player ────────────────────────
+  const bhs = boss.size / 2;
+  boss.x += boss.vx * sMul;
+  boss.y += boss.vy * sMul;
+  if (boss.x - bhs < WALL + 4)     { boss.x = WALL + bhs + 4;     boss.vx =  Math.abs(boss.vx); }
+  if (boss.x + bhs > W - WALL - 4) { boss.x = W - WALL - bhs - 4; boss.vx = -Math.abs(boss.vx); }
+  if (boss.y - bhs < WALL + 4)     { boss.y = WALL + bhs + 4;     boss.vy =  Math.abs(boss.vy); }
+  if (boss.y + bhs > H - WALL - 4) { boss.y = H - WALL - bhs - 4; boss.vy = -Math.abs(boss.vy); }
+  const bAng = Math.atan2(player.y - boss.y, player.x - boss.x);
+  boss.vx += Math.cos(bAng) * 0.014; boss.vy += Math.sin(bAng) * 0.014;
+  const bSpd = Math.hypot(boss.vx, boss.vy);
+  if (bSpd > 1.8) { boss.vx = boss.vx / bSpd * 1.8; boss.vy = boss.vy / bSpd * 1.8; }
+
+  // ── Attack 1: spawn minions ───────────────────────────────────────────
+  boss.spawnTimer--;
+  if (boss.spawnTimer <= 0) {
+    boss.spawnTimer = (phase === 1 ? 260 : phase === 2 ? 180 : 120) + Math.floor(Math.random()*80);
+    const live = bossRoom.enemies.filter(e => !e.dead).length;
+    if (live < 4) {
+      const count = phase === 3 ? 3 : 2;
+      for (let m = 0; m < count; m++) {
+        const mx = WALL + 60 + Math.random() * (W - 120 - WALL*2);
+        const my = WALL + 60 + Math.random() * (H - 120 - WALL*2);
+        bossRoom.enemies.push({
+          type: 'patrol', x: mx, y: my,
+          axis: Math.random() < 0.5 ? 'x' : 'y',
+          min: WALL + 40, max: (Math.random() < 0.5 ? W : H) - WALL - 40,
+          spd: 1.4 + Math.random(), dir: 1,
+          size: 14, hitTimer: 0, dead: false,
+        });
+      }
+      sfxBossRoar();
+      burst(boss.x, boss.y, '#ff2200', 16);
+    }
+    // Periodically clean up fully-dead minions
+    if (bossRoom.enemies.length > 20)
+      bossRoom.enemies = bossRoom.enemies.filter(e => !e.dead);
+  }
+
+  // ── Attack 2: 8-way (or 12-way) projectile burst ──────────────────────
+  boss.burstTimer--;
+  if (boss.burstTimer <= 0) {
+    boss.burstTimer = (phase === 1 ? 210 : phase === 2 ? 145 : 90) + Math.floor(Math.random()*60);
+    const count = phase === 3 ? 12 : 8;
+    for (let i = 0; i < count; i++) {
+      const a = (i / count) * Math.PI * 2;
+      projectiles.push({ x: boss.x, y: boss.y,
+                         vx: Math.cos(a) * 3.8, vy: Math.sin(a) * 3.8,
+                         size: 7, color: '#ff3300' });
+    }
+    sfxBurstFire();
+    burst(boss.x, boss.y, '#ff6600', 8);
+  }
+
+  // ── Attack 3: laser beam (phase 2+) ──────────────────────────────────
+  if (phase >= 2) {
+    if (boss.laserState === 'idle') {
+      boss.laserTimer--;
+      if (boss.laserTimer <= 0) {
+        boss.laserTimer = (phase === 2 ? 340 : 210) + Math.floor(Math.random()*100);
+        boss.laserState       = 'charging';
+        boss.laserChargeTimer = 90;
+        boss.laserAngle       = Math.atan2(player.y - boss.y, player.x - boss.x);
+        sfxLaserCharge();
+      }
+    } else if (boss.laserState === 'charging') {
+      boss.laserChargeTimer--;
+      if (boss.laserChargeTimer <= 0) {
+        boss.laserState     = 'firing';
+        boss.laserFireTimer = 55;
+        boss.laserStartX = boss.x; boss.laserStartY = boss.y;
+        const end = rayToWall(boss.x, boss.y, boss.laserAngle);
+        boss.laserEndX = end.x; boss.laserEndY = end.y;
+        sfxLaserFire();
+      }
+    } else if (boss.laserState === 'firing') {
+      boss.laserFireTimer--;
+      if (boss.laserFireTimer <= 0) {
+        boss.laserState = 'idle';
+      } else if (player.iframes === 0) {
+        const d = distToSegment(player.x, player.y,
+                                boss.laserStartX, boss.laserStartY,
+                                boss.laserEndX,   boss.laserEndY);
+        if (d < player.size / 2 + 12) {
+          player.hp--; player.iframes = 80;
+          sfxHit(); burst(player.x, player.y, '#ff4400', 8);
+          if (player.hp <= 0) { sfxDeath(); stopMusic(1.5); state = 'dead'; }
+        }
+      }
+    }
+  }
+
+  // ── Occasional health potion drop ────────────────────────────────────
+  boss.potionSpawnTimer--;
+  if (boss.potionSpawnTimer <= 0) {
+    boss.potionSpawnTimer = 380 + Math.floor(Math.random() * 160);
+    const live = bossRoomPotions.filter(p => !p.picked).length;
+    if (live < 2) {
+      bossRoomPotions.push({
+        x: WALL + 60 + Math.random() * (W - 120 - WALL * 2),
+        y: WALL + 60 + Math.random() * (H - 120 - WALL * 2),
+        picked: false,
+      });
+      burst(CX, CY, '#ff4488', 10);
+    }
+  }
+
+  // ── Boss touch damage ────────────────────────────────────────────────
+  if (player.iframes === 0) {
+    const d = Math.hypot(player.x - boss.x, player.y - boss.y);
+    if (d < (player.size + boss.size) / 2) {
+      player.hp--; player.iframes = 80;
+      sfxHit(); burst(player.x, player.y, '#e74c3c', 8);
+      const ang = Math.atan2(player.y - boss.y, player.x - boss.x);
+      const phs = player.size / 2;
+      player.x = Math.max(WALL+phs, Math.min(W-WALL-phs, player.x + Math.cos(ang)*50));
+      player.y = Math.max(WALL+phs, Math.min(H-WALL-phs, player.y + Math.sin(ang)*50));
+      if (player.hp <= 0) { sfxDeath(); stopMusic(1.5); state = 'dead'; }
+    }
+  }
+}
+
 // ─── Begin room transition ────────────────────────────────────────────────────
 function beginTrans(dir) {
   if (trans) return;
-  let ngx = curRoom.gx, ngy = curRoom.gy;
-  if (dir === 'N') ngy--;
-  if (dir === 'S') ngy++;
-  if (dir === 'W') ngx--;
-  if (dir === 'E') ngx++;
-  if (ngx < 0 || ngx >= GRID_W || ngy < 0 || ngy >= GRID_H) return;
 
   // Player entry position in new room (opposite side of door)
   const hs = player.size / 2;
@@ -412,6 +803,31 @@ function beginTrans(dir) {
   if (dir === 'S') py = WALL + hs + 2;
   if (dir === 'W') px = W - WALL - hs - 2;
   if (dir === 'E') px = WALL + hs + 2;
+
+  // Boss room routing
+  if (dir === 'S' && curRoom === rooms[2][2] && bossUnlocked) {
+    trans = { nextRoom: bossRoom, playerTo: {x: px, y: py}, t: 0 };
+    projectiles = []; return;
+  }
+  if (dir === 'N' && curRoom === bossRoom) {
+    trans = { nextRoom: rooms[2][2], playerTo: {x: px, y: py}, t: 0 };
+    projectiles = []; return;
+  }
+  if (dir === 'W' && curRoom === rooms[1][0] && wallBroken) {
+    trans = { nextRoom: secretRoom, playerTo: {x: W - WALL - player.size/2 - 2, y: py}, t: 0 };
+    projectiles = []; return;
+  }
+  if (dir === 'E' && curRoom === secretRoom) {
+    trans = { nextRoom: rooms[1][0], playerTo: {x: WALL + player.size/2 + 2, y: py}, t: 0 };
+    projectiles = []; return;
+  }
+
+  let ngx = curRoom.gx, ngy = curRoom.gy;
+  if (dir === 'N') ngy--;
+  if (dir === 'S') ngy++;
+  if (dir === 'W') ngx--;
+  if (dir === 'E') ngx++;
+  if (ngx < 0 || ngx >= GRID_W || ngy < 0 || ngy >= GRID_H) return;
 
   trans = { nextRoom: rooms[ngy][ngx], playerTo: {x: px, y: py}, t: 0 };
   projectiles = [];
@@ -436,11 +852,14 @@ function update() {
   if (trans) {
     trans.t += 0.065;
     if (trans.t >= 1) {
+      const wasInBossRoom = curRoom === bossRoom;
       curRoom = trans.nextRoom;
       curRoom.visited = true;
       player.x = trans.playerTo.x;
       player.y = trans.playerTo.y;
       trans = null;
+      const nowInBossRoom = curRoom === bossRoom;
+      if (nowInBossRoom !== wasInBossRoom && _ac) switchMusic(nowInBossRoom);
     }
     return;
   }
@@ -463,6 +882,7 @@ function update() {
   moveObj(player, dx, dy, curRoom);
   if (player.iframes > 0) player.iframes--;
   if (player.attackTimer > 0) player.attackTimer--;
+  if (bowCooldown > 0) bowCooldown--;
 
   // ── Sword attack ───────────────────────────────────────────────────────
   if (attackPressed && player.hasSword && player.attackTimer === 0) {
@@ -475,6 +895,25 @@ function update() {
         sfxKill();
         burst(e.x, e.y, '#ff4422', 12);
         burst(e.x, e.y, '#ffaa00', 6);
+        if (curRoom !== bossRoom) checkAllMainEnemiesDead();
+      }
+    }
+    // Boss hit
+    if (curRoom === bossRoom && boss && !boss.dead && boss.hitTimer === 0) {
+      if (overlaps(boss.x - boss.size/2, boss.y - boss.size/2, boss.size, boss.size,
+                   hb.x, hb.y, hb.w, hb.h)) {
+        boss.hp -= 2;
+        boss.hitTimer = 28;
+        sfxBossHit();
+        burst(boss.x, boss.y, '#ff4422', 8);
+        if (boss.hp <= 0) {
+          boss.dead = true;
+          burst(boss.x, boss.y, '#ff4422', 30);
+          burst(boss.x, boss.y, '#ffaa00', 20);
+          burst(boss.x, boss.y, '#ffffff', 14);
+          unlockAchiev('boss');
+          sfxWin(); stopMusic(1.0); state = 'won'; attackPressed = false; return;
+        }
       }
     }
     // Deflect projectiles caught in the swing
@@ -504,6 +943,7 @@ function update() {
       sword.picked = true;
       player.hasSword = true;
       sfxSword();
+      unlockAchiev('sword');
       burst(sword.x, sword.y, '#88ccff', 14);
       burst(sword.x, sword.y, '#ffffff', 6);
     }
@@ -515,10 +955,53 @@ function update() {
       potion.picked = true;
       player.hp = Math.min(player.maxHp, player.hp + 1);
       sfxHeal();
+      unlockAchiev('potion');
       burst(potion.x, potion.y, '#ff4488', 14);
       burst(potion.x, potion.y, '#ffaacc', 6);
     }
   }
+
+  // ── Boss room potion pickups ───────────────────────────────────────────
+  if (curRoom === bossRoom) {
+    for (const bp of bossRoomPotions) {
+      if (!bp.picked && Math.hypot(player.x - bp.x, player.y - bp.y) < player.size / 2 + 14) {
+        bp.picked = true;
+        player.hp = Math.min(player.maxHp, player.hp + 1);
+        sfxHeal();
+        burst(bp.x, bp.y, '#ff4488', 14);
+        burst(bp.x, bp.y, '#ffaacc', 6);
+      }
+    }
+  }
+
+  // ── Bow pickup ─────────────────────────────────────────────────────────
+  if (!bow.picked && bow.room === curRoom) {
+    if (Math.hypot(player.x - bow.x, player.y - bow.y) < player.size / 2 + 16) {
+      bow.picked = true;
+      player.hasBow = true;
+      sfxBowPickup();
+      unlockAchiev('bow');
+      burst(bow.x, bow.y, '#d4a020', 14);
+      burst(bow.x, bow.y, '#ffe080', 6);
+    }
+  }
+
+  // ── Bow shoot ──────────────────────────────────────────────────────────
+  if (shootPressed && player.hasBow && bowCooldown === 0) {
+    bowCooldown = 18;
+    const angles = { right: 0, down: Math.PI/2, left: Math.PI, up: -Math.PI/2 };
+    const a = angles[player.facing];
+    const spd = 7.5;
+    projectiles.push({
+      type: 'arrow',
+      x: player.x + Math.cos(a) * (player.size / 2 + 4),
+      y: player.y + Math.sin(a) * (player.size / 2 + 4),
+      vx: Math.cos(a) * spd, vy: Math.sin(a) * spd,
+      size: 5, color: '#c8a050',
+    });
+    sfxBowShoot();
+  }
+  shootPressed = false;
 
   // ── Enemies ────────────────────────────────────────────────────────────
   for (const e of curRoom.enemies) {
@@ -577,6 +1060,9 @@ function update() {
     }
   }
 
+  // ── Boss ───────────────────────────────────────────────────────────────
+  if (curRoom === bossRoom) { updateBoss(); if (state !== 'playing') return; }
+
   // ── Projectiles ────────────────────────────────────────────────────────
   const pWalls = wallRects(curRoom);
   for (let i = projectiles.length - 1; i >= 0; i--) {
@@ -591,13 +1077,57 @@ function update() {
         hitWall = true; break;
       }
     }
+
+    // Cracked wall check — arrow hits the west wall crack in rooms[1][0]
+    if (p.type === 'arrow' && !wallBroken && curRoom === rooms[1][0]
+        && hitWall && p.x <= WALL + p.size && p.y >= CY - 30 && p.y <= CY + 30) {
+      wallBroken = true;
+      rooms[1][0].doors.W = true;
+      secretRoom.doors.E  = true;
+      sfxWallBreak();
+      burst(p.x, p.y, '#cc99ff', 18);
+      burst(p.x, p.y, '#ffffff', 8);
+      projectiles.splice(i, 1);
+      continue;
+    }
+
     if (hitWall || p.x < 0 || p.x > W || p.y < 0 || p.y > H) {
       if (hitWall) sfxProjectileHit();
       projectiles.splice(i, 1);
       continue;
     }
 
-    // Player collision
+    // Arrow hits enemies / boss — does not hurt player
+    if (p.type === 'arrow') {
+      let hit = false;
+      for (const e of curRoom.enemies) {
+        if (!e.dead && Math.hypot(p.x - e.x, p.y - e.y) < e.size / 2 + p.size) {
+          e.dead = true; sfxArrowHit();
+          burst(e.x, e.y, '#ff4422', 10); burst(e.x, e.y, '#ffaa00', 5);
+          if (curRoom !== bossRoom) checkAllMainEnemiesDead();
+          hit = true; break;
+        }
+      }
+      if (!hit && curRoom === bossRoom && boss && !boss.dead && boss.hitTimer === 0) {
+        if (Math.hypot(p.x - boss.x, p.y - boss.y) < boss.size / 2 + p.size) {
+          boss.hp--; boss.hitTimer = 28;
+          sfxBossHit(); burst(boss.x, boss.y, '#ff4422', 8);
+          if (boss.hp <= 0) {
+            boss.dead = true;
+            burst(boss.x, boss.y, '#ff4422', 30);
+            burst(boss.x, boss.y, '#ffaa00', 20);
+            burst(boss.x, boss.y, '#ffffff', 14);
+            unlockAchiev('boss');
+            sfxWin(); stopMusic(1.0); state = 'won'; return;
+          }
+          hit = true;
+        }
+      }
+      if (hit) projectiles.splice(i, 1);
+      continue;
+    }
+
+    // Enemy projectiles — hurt player
     if (player.iframes === 0 && Math.hypot(p.x - player.x, p.y - player.y) < player.size/2 + p.size) {
       player.hp--;
       player.iframes = 80;
@@ -605,6 +1135,18 @@ function update() {
       projectiles.splice(i, 1);
       if (player.hp <= 0) { sfxDeath(); state = 'dead'; return; }
       sfxHit();
+    }
+  }
+
+  // ── Hat pickup ─────────────────────────────────────────────────────────
+  if (curRoom === secretRoom && !hat.picked) {
+    if (Math.hypot(player.x - hat.x, player.y - hat.y) < player.size / 2 + 16) {
+      hat.picked = true;
+      player.hasHat = true;
+      sfxHatPickup();
+      unlockAchiev('hat');
+      burst(hat.x, hat.y, '#cc88ff', 14);
+      burst(hat.x, hat.y, '#ffffff', 6);
     }
   }
 
@@ -616,8 +1158,23 @@ function update() {
       sfxStar();
       burst(s.x, s.y, '#ffd700');
       burst(s.x, s.y, '#fff', 6);
-      if (starsGot >= TOTAL_STARS) { sfxWin(); stopMusic(1.0); state = 'won'; return; }
+      if (starsGot >= TOTAL_STARS && !bossUnlocked) {
+        bossUnlocked = true;
+        bossRoom.doors.N  = true;
+        rooms[2][2].doors.S = true;
+        announceTimer = 260;
+        sfxUnlock();
+        unlockAchiev('stars');
+      }
     }
+  }
+
+  // ── Announce timer ─────────────────────────────────────────────────────
+  if (announceTimer > 0) announceTimer--;
+
+  // ── Achievement popup timers ───────────────────────────────────────────
+  for (let i = achievPopups.length - 1; i >= 0; i--) {
+    if (--achievPopups[i].timer <= 0) achievPopups.splice(i, 1);
   }
 
   // ── Particles ──────────────────────────────────────────────────────────
@@ -633,6 +1190,60 @@ function update() {
 const TILE = 40;
 
 function drawFloor() {
+  if (curRoom && curRoom.isSecretRoom) {
+    // Mystic purple stone
+    for (let ty = 0; ty * TILE < H; ty++) {
+      for (let tx = 0; tx * TILE < W; tx++) {
+        ctx.fillStyle = (tx + ty) % 2 === 0 ? '#180a28' : '#1d0d32';
+        ctx.fillRect(tx * TILE, ty * TILE, TILE, TILE);
+      }
+    }
+    ctx.strokeStyle = 'rgba(140,80,255,0.18)';
+    ctx.lineWidth = 1;
+    for (let ty = 0; ty * TILE < H; ty++) {
+      for (let tx = 0; tx * TILE < W; tx++) {
+        ctx.strokeRect(tx * TILE + 0.5, ty * TILE + 0.5, TILE - 1, TILE - 1);
+      }
+    }
+    // Drifting sparkles
+    for (let i = 0; i < 6; i++) {
+      const sx = 90 + i * 85;
+      const sy = 80 + ((i * 73 + frame * 0.4) % (H - 100));
+      const t  = Math.sin(frame * 0.07 + i * 1.5);
+      if (t > 0.4) {
+        ctx.fillStyle = `rgba(200,160,255,${(t - 0.4) * 0.7})`;
+        ctx.beginPath();
+        ctx.arc(sx, sy, 1.5 + t * 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    return;
+  }
+  if (curRoom && curRoom.isBossRoom) {
+    // Dark lava-stone floor
+    for (let ty = 0; ty * TILE < H; ty++) {
+      for (let tx = 0; tx * TILE < W; tx++) {
+        ctx.fillStyle = (tx + ty) % 2 === 0 ? '#1a0808' : '#1f0b0b';
+        ctx.fillRect(tx * TILE, ty * TILE, TILE, TILE);
+      }
+    }
+    ctx.strokeStyle = 'rgba(200,30,0,0.18)';
+    ctx.lineWidth = 1;
+    for (let ty = 0; ty * TILE < H; ty++) {
+      for (let tx = 0; tx * TILE < W; tx++) {
+        ctx.strokeRect(tx * TILE + 0.5, ty * TILE + 0.5, TILE - 1, TILE - 1);
+      }
+    }
+    // Faint lava glow pools
+    [[160,200],[480,340],[320,380],[100,120],[540,100]].forEach(([px,py]) => {
+      const g = ctx.createRadialGradient(px,py,0,px,py,40+14*Math.sin(frame*0.05+px));
+      g.addColorStop(0,  'rgba(200,30,0,0.22)');
+      g.addColorStop(1,  'rgba(200,30,0,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(px,py,50,0,Math.PI*2); ctx.fill();
+    });
+    return;
+  }
   for (let ty = 0; ty * TILE < H; ty++) {
     for (let tx = 0; tx * TILE < W; tx++) {
       // Subtle checkerboard grass
@@ -909,38 +1520,66 @@ function drawBeetle(e) {
   ctx.restore();
 }
 
-function drawPotionItem() {
-  if (potion.picked || potion.room !== curRoom) return;
-  const { x, y } = potion;
-  const bob = Math.sin(frame * 0.06) * 3;
-
+function drawPotionAt(x, y) {
+  const bob = Math.sin(frame * 0.06 + x * 0.01) * 3;
   ctx.save();
   ctx.translate(x, y + bob);
   ctx.shadowColor = '#ff4488';
   ctx.shadowBlur = 12 + 5 * Math.sin(frame * 0.08);
-
-  // Bottle body
   ctx.fillStyle = '#cc1155';
-  ctx.beginPath();
-  ctx.ellipse(0, 5, 9, 11, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Liquid shine
+  ctx.beginPath(); ctx.ellipse(0, 5, 9, 11, 0, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = 'rgba(255,150,180,0.45)';
-  ctx.beginPath();
-  ctx.ellipse(-3, 2, 4, 6, -0.3, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Neck
+  ctx.beginPath(); ctx.ellipse(-3, 2, 4, 6, -0.3, 0, Math.PI * 2); ctx.fill();
   ctx.shadowBlur = 0;
-  ctx.fillStyle = '#aa0044';
-  ctx.fillRect(-3, -8, 6, 7);
-
-  // Cork
+  ctx.fillStyle = '#aa0044'; ctx.fillRect(-3, -8, 6, 7);
   ctx.fillStyle = '#c8a060';
+  ctx.beginPath(); ctx.roundRect(-3, -14, 6, 7, 2); ctx.fill();
+  ctx.restore();
+}
+
+function drawPotionItem() {
+  if (potion.picked || potion.room !== curRoom) return;
+  drawPotionAt(potion.x, potion.y);
+}
+
+function drawBowItem() {
+  if (bow.picked || bow.room !== curRoom) return;
+  const { x, y } = bow;
+  const bob = Math.sin(frame * 0.065) * 3;
+
+  ctx.save();
+  ctx.translate(x, y + bob);
+  ctx.shadowColor = '#d4a020';
+  ctx.shadowBlur  = 12 + 5 * Math.sin(frame * 0.09);
+
+  // Bow arc (a curved stave)
+  ctx.strokeStyle = '#a06820';
+  ctx.lineWidth = 3.5;
+  ctx.lineCap = 'round';
   ctx.beginPath();
-  ctx.roundRect(-3, -14, 6, 7, 2);
-  ctx.fill();
+  ctx.arc(0, 0, 13, -Math.PI * 0.72, Math.PI * 0.72);
+  ctx.stroke();
+
+  // String
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = '#e8ddb0';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(Math.cos(-Math.PI*0.72)*13, Math.sin(-Math.PI*0.72)*13);
+  ctx.lineTo(Math.cos( Math.PI*0.72)*13, Math.sin( Math.PI*0.72)*13);
+  ctx.stroke();
+
+  // Arrow on the bow (resting)
+  ctx.strokeStyle = '#c8a050';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(-11, 0); ctx.lineTo(10, 0); ctx.stroke();
+  // Arrowhead
+  ctx.fillStyle = '#8888bb';
+  ctx.beginPath(); ctx.moveTo(10,0); ctx.lineTo(6,-3); ctx.lineTo(6,3); ctx.closePath(); ctx.fill();
+  // Fletching
+  ctx.strokeStyle = '#cc4444'; ctx.lineWidth = 1.5; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-9,0); ctx.lineTo(-13,-4); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-9,0); ctx.lineTo(-13, 4); ctx.stroke();
 
   ctx.restore();
 }
@@ -1024,22 +1663,265 @@ function drawOctopus(e) {
   ctx.restore();
 }
 
+function drawBoss() {
+  if (!boss || boss.dead || curRoom !== bossRoom) return;
+  const b = boss;
+  const s = b.size / 2;  // 36
+  const hpFrac = b.hp / b.maxHp;
+  const phase  = hpFrac > 0.667 ? 1 : hpFrac > 0.333 ? 2 : 3;
+  const flash  = b.hitTimer > 0 && b.hitTimer % 4 < 2;
+  const auraC  = phase === 3 ? '#ff0000' : phase === 2 ? '#cc2200' : '#881100';
+
+  ctx.save();
+  ctx.translate(b.x, b.y);
+  if (flash) ctx.globalAlpha = 0.3;
+
+  // ── Outer pulsing aura ───────────────────────────────────────────────
+  const auraR = s + 14 + 7 * Math.sin(frame * 0.09);
+  ctx.shadowColor = auraC;
+  ctx.shadowBlur  = 36;
+  ctx.fillStyle   = `rgba(${phase===3?'255,0,0':phase===2?'180,20,0':'100,0,0'},0.16)`;
+  ctx.beginPath(); ctx.arc(0, 0, auraR, 0, Math.PI*2); ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // ── Wings ────────────────────────────────────────────────────────────
+  const wf = Math.sin(frame * 0.13) * 0.18; // flap offset
+  ctx.fillStyle = phase === 3 ? '#3d0000' : '#1e0606';
+  // left wing
+  ctx.beginPath();
+  ctx.moveTo(-s*0.4, -s*0.3);
+  ctx.bezierCurveTo(-s*2.3, -s*1.5 + wf*s, -s*3.0, s*0.15, -s*1.7, s*0.85);
+  ctx.bezierCurveTo(-s*1.1, s*0.45, -s*0.7, s*0.15, -s*0.4, s*0.3);
+  ctx.closePath(); ctx.fill();
+  // right wing
+  ctx.beginPath();
+  ctx.moveTo(s*0.4, -s*0.3);
+  ctx.bezierCurveTo(s*2.3, -s*1.5 + wf*s, s*3.0, s*0.15, s*1.7, s*0.85);
+  ctx.bezierCurveTo(s*1.1, s*0.45, s*0.7, s*0.15, s*0.4, s*0.3);
+  ctx.closePath(); ctx.fill();
+  // wing membrane ribs
+  ctx.strokeStyle = 'rgba(200,40,40,0.45)'; ctx.lineWidth = 1.2;
+  [[-0.4,-0.12,-2.2,-0.9+wf], [-0.4,0.05,-2.6,0.35], [-0.4,0.25,-1.9,0.8]].forEach(([x1,y1,x2,y2])=>{
+    ctx.beginPath(); ctx.moveTo(x1*s,y1*s); ctx.lineTo(x2*s,y2*s); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-x1*s,y1*s); ctx.lineTo(-x2*s,y2*s); ctx.stroke();
+  });
+
+  // ── Body ─────────────────────────────────────────────────────────────
+  ctx.shadowColor = auraC; ctx.shadowBlur = 18;
+  ctx.fillStyle   = phase === 3 ? '#4d0505' : '#2e0606';
+  ctx.beginPath(); ctx.arc(0, 0, s, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = phase === 3 ? '#880000' : '#4a0e0e'; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.arc(0, 0, s, 0, Math.PI*2); ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Phase 3 damage cracks
+  if (phase === 3) {
+    ctx.strokeStyle = 'rgba(255,100,0,0.65)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(-s*0.5,-s*0.3); ctx.lineTo(-s*0.1,s*0.25); ctx.lineTo(s*0.3,s*0.1); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(s*0.4,-s*0.55); ctx.lineTo(s*0.1,-s*0.1); ctx.lineTo(s*0.55,s*0.35); ctx.stroke();
+  }
+
+  // ── Crown of 5 horns ────────────────────────────────────────────────
+  ctx.fillStyle = '#140000';
+  const hornDefs = [
+    {a:-Math.PI/2, l:s*1.65, w:6},  // centre — tallest
+    {a:-Math.PI/2 - 0.38, l:s*1.2, w:5},
+    {a:-Math.PI/2 + 0.38, l:s*1.2, w:5},
+    {a:-Math.PI/2 - 0.72, l:s*0.9, w:4},
+    {a:-Math.PI/2 + 0.72, l:s*0.9, w:4},
+  ];
+  for (const {a,l,w} of hornDefs) {
+    const bx = Math.cos(a)*s*0.8, by = Math.sin(a)*s*0.8;
+    const tx = Math.cos(a)*l,     ty = Math.sin(a)*l;
+    const nx = Math.cos(a+Math.PI/2), ny = Math.sin(a+Math.PI/2);
+    ctx.beginPath();
+    ctx.moveTo(bx + nx*w, by + ny*w);
+    ctx.lineTo(tx, ty);
+    ctx.lineTo(bx - nx*w, by - ny*w);
+    ctx.closePath(); ctx.fill();
+  }
+
+  // ── Three eyes (track player) ────────────────────────────────────────
+  const eyeA = Math.atan2(player.y - b.y, player.x - b.x);
+  const ep = 2.8; // pupil offset
+  const eyeDefs = [{ex:-s*0.38, ey:-s*0.08},{ex:0,ey:-s*0.24},{ex:s*0.38,ey:-s*0.08}];
+  for (const [idx, {ex, ey}] of eyeDefs.entries()) {
+    const isCentre = idx === 1;
+    const laserGlow = isCentre && (b.laserState === 'charging' || b.laserState === 'firing');
+    // Sclera
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.ellipse(ex, ey, s*0.23, s*0.27, 0, 0, Math.PI*2); ctx.fill();
+    // Charging glow on centre eye
+    if (laserGlow) {
+      const chargeT = b.laserState === 'firing' ? 1 : 1 - b.laserChargeTimer / 90;
+      ctx.shadowColor = '#ff7700'; ctx.shadowBlur = 22 * chargeT;
+      ctx.fillStyle = `rgba(255,${Math.floor(80+100*chargeT)},0,${0.5+chargeT*0.5})`;
+      ctx.beginPath(); ctx.ellipse(ex, ey, s*0.23*(1+chargeT*0.5), s*0.27*(1+chargeT*0.5), 0, 0, Math.PI*2); ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+    // Pupil
+    ctx.fillStyle = laserGlow ? '#ff3300' : '#111';
+    ctx.beginPath(); ctx.arc(ex+Math.cos(eyeA)*ep, ey+Math.sin(eyeA)*ep, s*0.13, 0, Math.PI*2); ctx.fill();
+  }
+
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
+function drawBossLaser() {
+  if (!boss || boss.laserState === 'idle' || curRoom !== bossRoom) return;
+  ctx.save();
+  if (boss.laserState === 'charging') {
+    // Dashed targeting line
+    const chargeT = 1 - boss.laserChargeTimer / 90;
+    const end = rayToWall(boss.x, boss.y, boss.laserAngle);
+    ctx.strokeStyle = `rgba(255,120,0,${chargeT * 0.65})`;
+    ctx.lineWidth   = 2 + chargeT * 3;
+    ctx.setLineDash([10, 10]);
+    ctx.lineDashOffset = -(frame * 2.5);
+    ctx.shadowColor = '#ff8800'; ctx.shadowBlur = 10 * chargeT;
+    ctx.beginPath(); ctx.moveTo(boss.x, boss.y); ctx.lineTo(end.x, end.y); ctx.stroke();
+    ctx.setLineDash([]);
+  } else if (boss.laserState === 'firing') {
+    const t = boss.laserFireTimer / 55;   // 1 → 0
+    // Outer glow
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = `rgba(255,60,0,${t * 0.55})`;
+    ctx.lineWidth   = 32;
+    ctx.shadowColor = '#ff4400'; ctx.shadowBlur = 28;
+    ctx.beginPath();
+    ctx.moveTo(boss.laserStartX, boss.laserStartY);
+    ctx.lineTo(boss.laserEndX,   boss.laserEndY); ctx.stroke();
+    // Core
+    ctx.strokeStyle = `rgba(255,240,180,${t})`;
+    ctx.lineWidth   = 7;
+    ctx.shadowColor = '#ffffff'; ctx.shadowBlur = 16;
+    ctx.beginPath();
+    ctx.moveTo(boss.laserStartX, boss.laserStartY);
+    ctx.lineTo(boss.laserEndX,   boss.laserEndY); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawCrackedWall() {
+  if (curRoom !== rooms[1][0] || wallBroken) return;
+  ctx.save();
+  // Glowing hint aura in crack zone
+  const pulse = 0.4 + 0.2 * Math.sin(frame * 0.07);
+  ctx.fillStyle = `rgba(160,100,255,${pulse * 0.35})`;
+  ctx.fillRect(0, CY - 34, WALL, 68);
+
+  // Crack lines
+  ctx.lineCap = 'round';
+  ctx.shadowColor = '#bb88ff';
+  ctx.shadowBlur = 6 + 3 * Math.sin(frame * 0.07);
+  ctx.strokeStyle = 'rgba(200,160,255,0.75)';
+  ctx.lineWidth = 1.8;
+  // Main jagged crack
+  ctx.beginPath();
+  ctx.moveTo(6,  CY - 16);
+  ctx.lineTo(18, CY - 6);
+  ctx.lineTo(11, CY + 1);
+  ctx.lineTo(22, CY + 14);
+  ctx.stroke();
+  // Branch left
+  ctx.beginPath();
+  ctx.moveTo(18, CY - 6);
+  ctx.lineTo(26, CY - 15);
+  ctx.stroke();
+  // Branch right
+  ctx.beginPath();
+  ctx.moveTo(11, CY + 1);
+  ctx.lineTo(4,  CY + 9);
+  ctx.stroke();
+
+  // Dark inner gap
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(7,  CY - 15);
+  ctx.lineTo(17, CY - 5);
+  ctx.lineTo(12, CY + 2);
+  ctx.lineTo(21, CY + 13);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawHatItem() {
+  if (curRoom !== secretRoom || hat.picked) return;
+  const bob = Math.sin(frame * 0.07) * 3;
+  ctx.save();
+  ctx.translate(hat.x, hat.y + bob);
+  ctx.shadowColor = '#cc88ff';
+  ctx.shadowBlur = 16 + 6 * Math.sin(frame * 0.09);
+
+  // Brim
+  ctx.fillStyle = '#1e0a38';
+  ctx.beginPath(); ctx.ellipse(0, 9, 19, 5, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#8844cc'; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.ellipse(0, 9, 19, 5, 0, 0, Math.PI * 2); ctx.stroke();
+
+  // Hat body (tapered)
+  ctx.fillStyle = '#2a0a50';
+  ctx.beginPath();
+  ctx.moveTo(-13, 9);
+  ctx.lineTo(-5, -20);
+  ctx.lineTo(5, -20);
+  ctx.lineTo(13, 9);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#6622aa'; ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(-13, 9); ctx.lineTo(-5, -20); ctx.lineTo(5, -20); ctx.lineTo(13, 9);
+  ctx.closePath(); ctx.stroke();
+
+  // Band
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#d4a020';
+  ctx.beginPath(); ctx.roundRect(-13, 4, 26, 5, 2); ctx.fill();
+
+  // Star on brim
+  ctx.shadowColor = '#ffee44'; ctx.shadowBlur = 8;
+  ctx.fillStyle = '#ffd700';
+  ctx.font = '11px serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('★', 0, 0);
+
+  ctx.restore();
+  ctx.textAlign = 'left';
+}
+
 function drawProjectiles() {
   for (const p of projectiles) {
     ctx.save();
-    ctx.shadowColor = '#9b59b6';
-    ctx.shadowBlur = 10;
-    // Ink-blob body
-    ctx.fillStyle = '#9b59b6';
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-    ctx.fill();
-    // Shine
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = 'rgba(255,255,255,0.45)';
-    ctx.beginPath();
-    ctx.arc(p.x - p.size * 0.3, p.y - p.size * 0.32, p.size * 0.35, 0, Math.PI * 2);
-    ctx.fill();
+    if (p.type === 'arrow') {
+      // Draw as a rotated arrow shape
+      const angle = Math.atan2(p.vy, p.vx);
+      ctx.translate(p.x, p.y);
+      ctx.rotate(angle);
+      ctx.shadowColor = '#ffe090'; ctx.shadowBlur = 6;
+      // Shaft
+      ctx.strokeStyle = '#c8a050'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(-10, 0); ctx.lineTo(7, 0); ctx.stroke();
+      // Head
+      ctx.fillStyle = '#9090cc'; ctx.shadowBlur = 0;
+      ctx.beginPath(); ctx.moveTo(7,0); ctx.lineTo(2,-3); ctx.lineTo(2,3); ctx.closePath(); ctx.fill();
+      // Fletching
+      ctx.strokeStyle = '#cc3333'; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(-8,0); ctx.lineTo(-12,-4); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-8,0); ctx.lineTo(-12, 4); ctx.stroke();
+    } else {
+      const col = p.color || '#9b59b6';
+      ctx.shadowColor = col; ctx.shadowBlur = 10;
+      // Ink-blob body
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+      // Shine
+      ctx.shadowBlur = 0; ctx.fillStyle = 'rgba(255,255,255,0.45)';
+      ctx.beginPath();
+      ctx.arc(p.x - p.size*0.3, p.y - p.size*0.32, p.size*0.35, 0, Math.PI*2);
+      ctx.fill();
+    }
     ctx.restore();
   }
 }
@@ -1139,6 +2021,26 @@ function drawPlayer() {
   ctx.closePath();
   ctx.fill();
 
+  // Wizard hat (when collected) — sits on top of the player
+  if (player.hasHat) {
+    ctx.shadowColor = '#cc88ff'; ctx.shadowBlur = 7;
+    // Brim
+    ctx.fillStyle = '#1e0a38';
+    ctx.beginPath(); ctx.ellipse(0, -s - 3, 10, 3, 0, 0, Math.PI * 2); ctx.fill();
+    // Body
+    ctx.fillStyle = '#2a0a50';
+    ctx.beginPath();
+    ctx.moveTo(-8, -s - 3);
+    ctx.lineTo(-3, -s - 15);
+    ctx.lineTo(3,  -s - 15);
+    ctx.lineTo(8,  -s - 3);
+    ctx.closePath(); ctx.fill();
+    // Band
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#d4a020';
+    ctx.fillRect(-8, -s - 8, 16, 3);
+  }
+
   // Sword in hand (when held and not swinging)
   if (player.hasSword && player.attackTimer === 0) {
     // Offset to the right of facing direction
@@ -1223,6 +2125,53 @@ function drawHUD() {
     ctx.fillText('SPACE', W / 2, 28);
     ctx.textAlign = 'left';
   }
+
+  // Bow icon (when held) — shown to the right of centre
+  if (player.hasBow) {
+    const ix = W / 2 + 22, iy = 10;
+    ctx.save();
+    ctx.translate(ix + 10, iy + 10);
+    ctx.shadowColor = '#d4a020';
+    ctx.shadowBlur = bowCooldown > 0 ? 4 : 10;
+    // Arc stave
+    ctx.strokeStyle = bowCooldown > 0 ? '#886010' : '#a06820';
+    ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.arc(0, 0, 8, -Math.PI*0.72, Math.PI*0.72); ctx.stroke();
+    // String
+    ctx.shadowBlur = 0; ctx.strokeStyle = '#e8ddb0'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(-Math.PI*0.72)*8, Math.sin(-Math.PI*0.72)*8);
+    ctx.lineTo(Math.cos( Math.PI*0.72)*8, Math.sin( Math.PI*0.72)*8);
+    ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = '#ffe090';
+    ctx.font = '11px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('E', ix + 10, 28);
+    ctx.textAlign = 'left';
+  }
+
+  // Boss health bar (shown when in boss room and boss is alive)
+  if (curRoom === bossRoom && boss && !boss.dead) {
+    const barW = 300, barH = 13;
+    const bx = (W - barW) / 2, by = H - 32;
+    ctx.font = 'bold 11px Courier New';
+    ctx.fillStyle = '#ff4422';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#ff0000'; ctx.shadowBlur = 8;
+    ctx.fillText('✦ SHADOW WARLORD ✦', W/2, by - 5);
+    ctx.shadowBlur = 0;
+    // Background
+    ctx.fillStyle = '#2a0505'; ctx.fillRect(bx, by, barW, barH);
+    // HP fill
+    const hf = boss.hp / boss.maxHp;
+    ctx.fillStyle = hf > 0.5 ? '#cc1100' : hf > 0.25 ? '#ff3300' : '#ff8800';
+    ctx.fillRect(bx, by, barW * hf, barH);
+    // Border
+    ctx.strokeStyle = '#660000'; ctx.lineWidth = 1.5;
+    ctx.strokeRect(bx, by, barW, barH);
+    ctx.textAlign = 'left';
+  }
 }
 
 function drawMinimap() {
@@ -1230,7 +2179,7 @@ function drawMinimap() {
   const mapW = GRID_W * (RW + GAP) - GAP;
   const mapH = GRID_H * (RH + GAP) - GAP;
   const ox = W - mapW - 10;
-  const oy = H - mapH - 10;
+  const oy = H - mapH - 10 - (RH + GAP) - 8;  // shift up to make room for boss room cell
 
   // Background panel
   ctx.fillStyle = 'rgba(0,0,0,0.55)';
@@ -1245,9 +2194,11 @@ function drawMinimap() {
       if (r === curRoom) {
         ctx.fillStyle = '#00ff88';
       } else if (r === sword.room && !sword.picked) {
-        ctx.fillStyle = '#44ddff';   // cyan  = sword
+        ctx.fillStyle = '#44ddff';   // cyan   = sword
+      } else if (r === bow.room && !bow.picked) {
+        ctx.fillStyle = '#ffaa20';   // orange = bow
       } else if (r === potion.room && !potion.picked) {
-        ctx.fillStyle = '#ff4488';   // pink  = potion
+        ctx.fillStyle = '#ff4488';   // pink   = potion
       } else if (r.visited) {
         const hasStars = r.stars.some(s => !s.collected);
         ctx.fillStyle = hasStars ? '#ccaa00' : '#556655';
@@ -1261,6 +2212,52 @@ function drawMinimap() {
       ctx.lineWidth = 0.5;
       ctx.strokeRect(rx, ry, RW, RH);
     }
+  }
+
+  // Secret room (left of rooms[1][0], shown once wall is broken)
+  if (wallBroken) {
+    const secRx = ox + 0 * (RW + GAP) - (RW + GAP);
+    const secRy = oy + 1 * (RH + GAP);
+    // Connector line
+    ctx.strokeStyle = 'rgba(160,100,255,0.6)'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(ox, secRy + RH / 2);
+    ctx.lineTo(secRx + RW, secRy + RH / 2);
+    ctx.stroke();
+    // Cell
+    ctx.fillStyle = curRoom === secretRoom ? '#cc88ff' : (secretRoom.visited ? '#553388' : '#2a1144');
+    ctx.fillRect(secRx, secRy, RW, RH);
+    ctx.strokeStyle = '#9944cc'; ctx.lineWidth = 1;
+    ctx.strokeRect(secRx, secRy, RW, RH);
+    // Hat symbol
+    ctx.fillStyle = '#ddaaff'; ctx.font = '7px serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('🎩', secRx + RW / 2, secRy + RH - 1);
+    ctx.textAlign = 'left';
+  }
+
+  // Boss room (below grid centre)
+  if (bossUnlocked) {
+    const bossRx = ox + 2 * (RW + GAP);
+    const bossRy = oy + GRID_H * (RH + GAP);
+    // Connecting line from room (2,2)
+    ctx.strokeStyle = 'rgba(220,40,0,0.55)'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(bossRx + RW/2, oy + 2*(RH+GAP) + RH);
+    ctx.lineTo(bossRx + RW/2, bossRy);
+    ctx.stroke();
+    // Room cell
+    ctx.fillStyle = curRoom === bossRoom
+      ? '#ff6600'
+      : (boss && !boss.dead ? '#880000' : '#330000');
+    ctx.fillRect(bossRx, bossRy, RW, RH);
+    ctx.strokeStyle = '#ff3300'; ctx.lineWidth = 1;
+    ctx.strokeRect(bossRx, bossRy, RW, RH);
+    // Skull icon
+    ctx.fillStyle = '#ffaaaa'; ctx.font = '7px serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('☠', bossRx + RW/2, bossRy + RH - 1);
+    ctx.textAlign = 'left';
   }
 }
 
@@ -1295,15 +2292,20 @@ function drawOverlay() {
     ctx.shadowColor = '#ffaa00';
     ctx.shadowBlur = 30;
     ctx.fillStyle = '#ffd700';
-    ctx.font = 'bold 54px Courier New';
-    ctx.fillText('YOU WIN!', CX, H/2 - 40);
+    ctx.font = 'bold 52px Courier New';
+    ctx.fillText('YOU WIN!', CX, H/2 - 52);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#ff8855';
+    ctx.font = 'bold 22px Courier New';
+    ctx.shadowColor = '#ff2200'; ctx.shadowBlur = 12;
+    ctx.fillText('Shadow Warlord Defeated!', CX, H/2 - 10);
     ctx.shadowBlur = 0;
     ctx.fillStyle = '#ccffcc';
-    ctx.font = '22px Courier New';
-    ctx.fillText(`All ${TOTAL_STARS} stars collected!`, CX, H/2 + 12);
+    ctx.font = '18px Courier New';
+    ctx.fillText(`All ${TOTAL_STARS} stars collected!`, CX, H/2 + 22);
     ctx.fillStyle = '#888';
     ctx.font = '15px Courier New';
-    ctx.fillText('Press R to play again', CX, H/2 + 50);
+    ctx.fillText('Press R to play again  ·  M to view achievements', CX, H/2 + 55);
   }
 
   if (state === 'dead') {
@@ -1324,6 +2326,141 @@ function drawOverlay() {
   ctx.textAlign = 'left';
 }
 
+// ─── Achievement popups ───────────────────────────────────────────────────────
+function drawAchievPopups() {
+  if (!achievPopups.length) return;
+  const PW = 270, PH = 52, PR = 8;
+  const px = W - PW - 10;
+
+  for (let idx = 0; idx < Math.min(achievPopups.length, 3); idx++) {
+    const pop = achievPopups[achievPopups.length - 1 - idx]; // newest first
+    const t   = pop.timer;
+    const alpha = t > 230 ? (260 - t) / 30   // fade in
+                : t < 45  ? t / 45            // fade out
+                : 1;
+    const py = 10 + idx * 58;
+    const meta = ACHIEVS.find(a => a.id === pop.id);
+    if (!meta) continue;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    // Background panel
+    ctx.fillStyle = 'rgba(10,10,20,0.88)';
+    ctx.strokeStyle = '#d4a020';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(px, py, PW, PH, PR);
+    ctx.fill(); ctx.stroke();
+
+    // Gold left accent bar
+    ctx.fillStyle = '#d4a020';
+    ctx.beginPath();
+    ctx.roundRect(px, py, 4, PH, [PR, 0, 0, PR]);
+    ctx.fill();
+
+    // Icon
+    ctx.font = '22px serif';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#fff';
+    ctx.fillText(meta.icon, px + 14, py + 33);
+
+    // Header
+    ctx.font = 'bold 9px Courier New';
+    ctx.fillStyle = '#d4a020';
+    ctx.fillText('ACHIEVEMENT UNLOCKED', px + 44, py + 16);
+
+    // Title
+    ctx.font = 'bold 13px Courier New';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(meta.title, px + 44, py + 33);
+
+    // Desc
+    ctx.font = '10px Courier New';
+    ctx.fillStyle = '#aaaaaa';
+    ctx.fillText(meta.desc, px + 44, py + 46);
+
+    ctx.restore();
+  }
+  ctx.textAlign = 'left';
+}
+
+// ─── Achievement menu overlay ────────────────────────────────────────────────
+function drawAchievMenu() {
+  if (!showAchievMenu) return;
+  const MW = 380, MH = 410;
+  const mx = (W - MW) / 2, my = (H - MH) / 2;
+
+  ctx.save();
+  // Dim background
+  ctx.fillStyle = 'rgba(0,0,0,0.78)';
+  ctx.fillRect(0, 0, W, H);
+
+  // Panel
+  ctx.fillStyle = '#0d1520';
+  ctx.strokeStyle = '#d4a020';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.roundRect(mx, my, MW, MH, 12); ctx.fill(); ctx.stroke();
+
+  // Title
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ffd700';
+  ctx.font = 'bold 20px Courier New';
+  ctx.shadowColor = '#ff8800'; ctx.shadowBlur = 12;
+  ctx.fillText('✦ ACHIEVEMENTS ✦', W / 2, my + 34);
+  ctx.shadowBlur = 0;
+
+  // Divider
+  ctx.strokeStyle = 'rgba(212,160,32,0.4)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(mx + 20, my + 46); ctx.lineTo(mx + MW - 20, my + 46); ctx.stroke();
+
+  // Achievement rows
+  const rowH = 54, startY = my + 66;
+  for (let i = 0; i < ACHIEVS.length; i++) {
+    const a      = ACHIEVS[i];
+    const got    = !!achievements[a.id];
+    const hidden = a.secret && !got;   // secret + not yet unlocked → mask it
+    const ry     = startY + i * rowH;
+
+    // Row highlight if unlocked
+    if (got) {
+      ctx.fillStyle = 'rgba(212,160,32,0.1)';
+      ctx.beginPath(); ctx.roundRect(mx + 14, ry - 6, MW - 28, rowH - 4, 6); ctx.fill();
+    }
+
+    // Check / lock icon
+    ctx.font = '18px serif';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = got ? '#44ee88' : '#444466';
+    ctx.fillText(got ? '✓' : '○', mx + 22, ry + 22);
+
+    // Achievement icon
+    ctx.fillStyle = got ? '#ffffff' : '#555577';
+    ctx.font = '20px serif';
+    ctx.fillText(hidden ? '🔒' : a.icon, mx + 48, ry + 23);
+
+    // Title
+    ctx.font = `bold 13px Courier New`;
+    ctx.fillStyle = got ? '#ffffff' : '#556677';
+    ctx.fillText(hidden ? '???' : a.title, mx + 78, ry + 15);
+
+    // Description
+    ctx.font = '11px Courier New';
+    ctx.fillStyle = got ? '#aaaacc' : '#445566';
+    ctx.fillText(hidden ? '???' : a.desc, mx + 78, ry + 31);
+  }
+
+  // Footer
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#556677';
+  ctx.font = '11px Courier New';
+  ctx.fillText('Press M to close', W / 2, my + MH - 14);
+
+  ctx.restore();
+  ctx.textAlign = 'left';
+}
+
 // ─── Main draw ────────────────────────────────────────────────────────────────
 function draw() {
   ctx.clearRect(0, 0, W, H);
@@ -1340,11 +2477,18 @@ function draw() {
     // Only draw live entities when not transitioning
     drawSwordItem();
     drawPotionItem();
+    drawBowItem();
+    drawHatItem();
+    if (curRoom === bossRoom)
+      for (const bp of bossRoomPotions) if (!bp.picked) drawPotionAt(bp.x, bp.y);
     for (const e of curRoom.enemies) drawEnemy(e);
+    drawBossLaser();
+    drawCrackedWall();
     drawProjectiles();
     drawParticles();
     drawAttack();
     drawPlayer();
+    drawBoss();
   }
 
   drawHUD();
@@ -1357,7 +2501,30 @@ function draw() {
     ctx.fillRect(0, 0, W, H);
   }
 
+  // Boss-unlock announcement
+  if (announceTimer > 0) {
+    const t = announceTimer / 260;
+    const alpha = t < 0.15 ? t / 0.15 : t > 0.85 ? (1-t) / 0.15 : 1;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(0, H/2 - 46, W, 76);
+    ctx.shadowColor = '#ff2200'; ctx.shadowBlur = 22;
+    ctx.fillStyle = '#ff4422';
+    ctx.font = 'bold 26px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('⚠  BOSS ROOM UNLOCKED  ⚠', CX, H/2 - 10);
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = '#ffaa55';
+    ctx.font = '15px Courier New';
+    ctx.fillText('Head south from the centre-bottom room', CX, H/2 + 18);
+    ctx.restore();
+    ctx.textAlign = 'left';
+  }
+
   drawOverlay();
+  drawAchievPopups();
+  drawAchievMenu();
 }
 
 // ─── Game loop ────────────────────────────────────────────────────────────────
