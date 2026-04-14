@@ -44,8 +44,8 @@
 const W = 640, H = 480;
 const WALL = 32;       // wall thickness
 const DOOR_W = 80;     // door opening width
-const GRID_W = 4, GRID_H = 3;
-const TOTAL_STARS = 10;
+const GRID_W = 5, GRID_H = 3;
+const TOTAL_STARS = 12;
 const CX = W / 2;     // horizontal door center (N/S walls)
 const CY = H / 2;     // vertical door center (E/W walls)
 const DH = DOOR_W / 2;
@@ -206,7 +206,7 @@ window.addEventListener('keyup', e => { keys[e.key] = false; });
 
 // ─── Room templates ──────────────────────────────────────────────────────────
 // stars: [{x,y}]  enemies: [{x,y,axis:'x'|'y',min,max,spd}]
-// 12 rooms (4 cols × 3 rows), 10 total stars
+// 15 rooms (5 cols × 3 rows), 12 total stars
 const TEMPLATES = [
   // ── Row 0 ───────────────────────────────────────────────────────────────
   { stars: [{x:160,y:200}],
@@ -219,6 +219,8 @@ const TEMPLATES = [
   { stars: [{x:480,y:190}],
     enemies: [{x:290,y:290,axis:'x',min:80,max:560,spd:2.0},
               {type:'octo',x:170,y:170,shootInterval:130}] },                                // (3,0)
+  { stars: [{x:200,y:200}],
+    enemies: [{x:400,y:300,axis:'x',min:80,max:560,spd:2.2}] },                              // (4,0)
   // ── Row 1 ───────────────────────────────────────────────────────────────
   { stars: [],
     enemies: [{x:200,y:240,axis:'y',min:60,max:420,spd:1.4}] },                              // (0,1)
@@ -229,6 +231,9 @@ const TEMPLATES = [
   { stars: [{x:500,y:240}],
     enemies: [{x:200,y:150,axis:'y',min:60,max:400,spd:1.6},
               {x:400,y:360,axis:'x',min:100,max:560,spd:1.3}] },                             // (3,1)
+  { stars: [],
+    enemies: [{type:'octo',x:320,y:240,shootInterval:100},
+              {x:200,y:350,axis:'x',min:80,max:560,spd:1.7}] },                              // (4,1)
   // ── Row 2 ───────────────────────────────────────────────────────────────
   { stars: [{x:160,y:300}],
     enemies: [{x:300,y:240,axis:'x',min:60,max:560,spd:1.5},
@@ -242,8 +247,11 @@ const TEMPLATES = [
               {type:'octo',x:320,y:370,shootInterval:110}] },                                // (2,2)
   { stars: [{x:200,y:200},{x:490,y:320}],
     enemies: [{x:330,y:240,axis:'x',min:80,max:560,spd:1.6}] },                              // (3,2)
+  { stars: [{x:350,y:240}],
+    enemies: [{x:180,y:180,axis:'y',min:60,max:420,spd:1.8},
+              {x:460,y:310,axis:'x',min:80,max:560,spd:2.0}] },                              // (4,2)
 ];
-// Star count check: 1+1+0+1 + 0+0+2+1 + 1+0+1+2 = 10 ✓
+// Star count check: 1+1+0+1+1 + 0+0+2+1+0 + 1+0+1+2+1 = 12 ✓
 
 // ─── Build rooms ─────────────────────────────────────────────────────────────
 function buildRooms() {
