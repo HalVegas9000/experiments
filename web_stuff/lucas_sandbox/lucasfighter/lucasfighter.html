@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lucas Fighter</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#10101e; display:flex; justify-content:center; align-items:center;
+         height:100vh; overflow:hidden; font-family:Arial,sans-serif; }
+  canvas { display:block; image-rendering:pixelated; }
+
+  #menu {
+    position:fixed; inset:0; background:#10101e;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    z-index:10;
+  }
+  #menu h1 {
+    font-size:48px; font-weight:900; letter-spacing:4px;
+    background:linear-gradient(135deg,#4fc3f7,#ce93d8);
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+    margin-bottom:8px;
+  }
+  #menu .sub { color:#445566; font-size:13px; margin-bottom:44px; letter-spacing:2px; }
+  #menu button {
+    width:220px; padding:14px 0; margin:8px; border:none; border-radius:6px;
+    background:#0d2137; color:#eceff1; font-size:16px; font-weight:700;
+    cursor:pointer; letter-spacing:1px; transition:background .15s, transform .1s;
+    border:2px solid #1a3a5c;
+  }
+  #menu button:hover { background:#1565c0; transform:scale(1.04); }
+  #menu .controls {
+    margin-top:36px; color:#2a3a4a; font-size:11px; line-height:1.9; text-align:center;
+  }
+</style>
+</head>
+<body>
+
+<div id="menu">
+  <h1>LUCAS FIGHTER</h1>
+  <div class="sub">PLATFORM FIGHTER</div>
+  <button id="btnCpu">▶  vs CPU</button>
+  <button id="btnP2"> ▶  2 Players</button>
+  <div class="controls">
+    Player 1 : A / D = move &nbsp;|&nbsp; W = jump &nbsp;|&nbsp; S = fast-fall &nbsp;|&nbsp; F = attack / use item &nbsp;|&nbsp; G = heavy / throw item<br>
+    Player 2 : ← / → = move &nbsp;|&nbsp; ↑ = jump &nbsp;|&nbsp; ↓ = fast-fall &nbsp;|&nbsp; K = attack / use item &nbsp;|&nbsp; L = heavy / throw item<br>
+    Walk over items to pick them up &nbsp;|&nbsp; R = restart &nbsp;|&nbsp; Esc = menu
+  </div>
+</div>
+
+<canvas id="canvas"></canvas>
+
+<script>
+"use strict";
+
+// ── Constants ────────────────────────────────────────────────────────────────
+const W=1024, H=620;
+const GRAVITY=0.55, MAX_FALL=18, FRICTION=0.80, AIR_FRIC=0.90;
+const WALK_SPD=5.5, AIR_SPD=4.5, JUMP_V=-15, DJ_V=-13;
+const PW=34, PH=46;
+const BZ_L=-220, BZ_R=W+220, BZ_T=-280, BZ_B=H+120;
+const STOCKS=3;
+
+// Item spawn interval: 9–15 seconds at 60fps
+const ITEM_SPAWN_MIN=540, ITEM_SPAWN_MAX=900;
+const MAX_ITEMS=2;
+
+const PLATFORMS=[
+  {x:92,  y:490, w:840, h:22},
+  {x:220, y:348, w:190, h:16},
+  {x:614, y:348, w:190, h:16},
+  {x:407, y:238, w:210, h:16},
+];
+
+const ATTACKS={
+  jab:    {dmg:6,  base_kb:4.0,  kb_s:0.07, hw:54, hh:32, dur:14, st:3,  cd:20},
+  ftilt:  {dmg:10, base_kb:6.0,  kb_s:0.09, hw:62, hh:36, dur:20, st:5,  cd:26},
+  fsmash: {dmg:20, base_kb:11.0, kb_s:0.14, hw:72, hh:44, dur:34, st:13, cd:40},
+  nair:   {dmg:7,  base_kb:5.0,  kb_s:0.09, hw:52, hh:54, dur:22, st:5,  cd:28},
+  uair:   {dmg:9,  base_kb:7.0,  kb_s:0.10, hw:42, hh:58, dur:18, st:4,  cd:24},
+  dair:   {dmg:13, base_kb:8.5,  kb_s:0.12, hw:40, hh:32, dur:20, st:6,  cd:26},
+};
+
+// ── Particle ──────────────────────────────────────────────────────────────────
+class Particle {
+  constructor(x,y,vx,vy,color,life,size=4){
+    this.x=x; this.y=y; this.vx=vx; this.vy=vy;
+    this.color=color; this.life=life; this.maxLife=life; this.size=size;
+  }
+  step(){
+    this.x+=this.vx; this.y+=this.vy;
+    this.vy+=0.25; this.vx*=0.94; this.life--;
+    return this.life>0;
+  }
+}
+
+// ── Item ──────────────────────────────────────────────────────────────────────
+class Item {
+  constructor(type, x, y){
+    this.type=type;           // 'bomb' | 'blaster'
+    this.x=x; this.y=y;
+    this.vx=0; this.vy=0;
+    this.onGround=false;
+    this.holder=null;         // Fighter holding this, or null
+    // Bomb state
+    this.fuseTimer=0;         // counts down once thrown; explodes at 0
+    this.thrown=false;
+    this.hitOwner=false;      // whether this thrown item can hurt its thrower
+    this.thrower=null;        // Fighter who threw it (brief grace period)
+    this.throwerGrace=0;      // frames before thrower can be hit by their own item
+    // Blaster state
+    this.ammo = type==='blaster' ? 5 : 0;
+    // Lifespan on ground (auto-despawn after 12 seconds idle)
+    this.groundTimer=0;
+    // Bob animation
+    this.bobT=Math.random()*Math.PI*2;
+  }
+}
+
+// ── Bullet ────────────────────────────────────────────────────────────────────
+class Bullet {
+  constructor(x,y,vx,owner){
+    this.x=x; this.y=y; this.vx=vx; this.vy=0;
+    this.owner=owner;
+    this.life=65;
+  }
+}
+const BULLET_DMG=8, BULLET_KB=5.5, BULLET_KB_S=0.07;
+
+// ── Explosion ─────────────────────────────────────────────────────────────────
+class Explosion {
+  constructor(x,y){ this.x=x; this.y=y; this.frame=0; this.maxFrame=28; this.radius=90; }
+  get alive(){ return this.frame<this.maxFrame; }
+}
+const BOMB_DMG=22, BOMB_KB=10, BOMB_KB_S=0.13;
+
+// ── Fighter ───────────────────────────────────────────────────────────────────
+class Fighter {
+  constructor(x,y,color,dark,name,facing=1){
+    this.x=x; this.y=y; this.vx=0; this.vy=0;
+    this.color=color; this.dark=dark; this.name=name; this.facing=facing;
+    this.onGround=false; this.jumps=2;
+    this.damage=0; this.stocks=STOCKS;
+    this.hitstun=0; this.invincible=0;
+    this.atkName=null; this.atkFrame=0; this.atkDur=0; this.atkCd=0;
+    this.dead=false; this.respTimer=0;
+    this.heldItem=null;
+  }
+  get cx(){ return this.x+PW/2; }
+  get cy(){ return this.y+PH/2; }
+
+  hitbox(){
+    if(!this.atkName) return null;
+    const a=ATTACKS[this.atkName];
+    if(this.atkFrame<a.st || this.atkFrame>=a.st+7) return null;
+    const {hw,hh}=a;
+    if(this.atkName==='uair') return {x1:this.cx-hw/2,y1:this.y-hh*0.8,x2:this.cx+hw/2,y2:this.y+hh*0.25};
+    if(this.atkName==='dair') return {x1:this.cx-hw/2,y1:this.y+PH*0.5,x2:this.cx+hw/2,y2:this.y+PH+hh*0.35};
+    if(this.atkName==='nair') return {x1:this.cx-hw/2,y1:this.cy-hh/2,x2:this.cx+hw/2,y2:this.cy+hh/2};
+    return this.facing===1
+      ? {x1:this.x+PW*0.45,y1:this.cy-hh/2,x2:this.x+PW+hw*0.65,y2:this.cy+hh/2}
+      : {x1:this.x-hw*0.65,y1:this.cy-hh/2,x2:this.x+PW*0.55,  y2:this.cy+hh/2};
+  }
+
+  startAttack(name){
+    const a=ATTACKS[name];
+    this.atkName=name; this.atkFrame=0; this.atkDur=a.dur; this.atkCd=a.cd;
+  }
+
+  takeHit(atk,srcFacing){
+    if(this.invincible>0) return false;
+    this.damage+=atk.dmg;
+    const kb=atk.base_kb+this.damage*atk.kb_s;
+    const ang=42*Math.PI/180;
+    this.vx=srcFacing*kb*Math.cos(ang);
+    this.vy=-kb*Math.sin(ang);
+    this.hitstun=Math.max(Math.floor(kb*2.8),10);
+    this.onGround=false;
+    return true;
+  }
+}
+
+// ── CPU AI ────────────────────────────────────────────────────────────────────
+class CPU {
+  constructor(me,foe){ this.me=me; this.foe=foe; this.decideT=0; this.behavior='approach'; this.jumpCd=0; }
+
+  think(nearbyItem){
+    const f=this.me, t=this.foe, out={};
+    if(f.dead||f.hitstun>5) return out;
+    const dx=t.cx-f.cx, dy=t.cy-f.cy, dist=Math.abs(dx);
+
+    // Off-stage recovery
+    if(f.y>H-80&&!f.onGround){
+      if(f.jumps>0) out.jump=true;
+      out[f.cx<W/2?'right':'left']=true;
+      return out;
+    }
+
+    // Held item actions
+    if(f.heldItem){
+      // Face the opponent
+      if(dx>20) out.right=true; if(dx<-20) out.left=true;
+      if(f.heldItem.type==='bomb'){
+        // Throw bomb when facing opponent and reasonably close
+        if(dist<320&&Math.random()<0.025) out.useItem=true;
+      } else {
+        // Blaster: shoot if opponent is roughly in line
+        if(dist<380&&Math.abs(dy)<100&&Math.random()<0.04) out.useItem=true;
+      }
+      return out;
+    }
+
+    // Chase nearby item on ground
+    if(nearbyItem&&!f.heldItem){
+      const idx=nearbyItem.x-f.cx, idy=nearbyItem.y-f.cy;
+      if(Math.abs(idx)>30){ out[idx>0?'right':'left']=true; return out; }
+    }
+
+    // Re-decide periodically
+    if(--this.decideT<=0){
+      this.decideT=18+Math.floor(Math.random()*37);
+      if(dist<75)       this.behavior=Math.random()<0.6?'attack':'retreat';
+      else if(dist<220) this.behavior=Math.random()<0.65?'approach':'attack';
+      else              this.behavior='approach';
+    }
+
+    this.jumpCd=Math.max(this.jumpCd-1,0);
+    if(dy<-70&&f.onGround&&this.jumpCd===0&&Math.random()<0.04){ out.jump=true; this.jumpCd=45; }
+
+    if(this.behavior==='retreat'){ out[dx>0?'left':'right']=true; }
+    else { if(dx>20) out.right=true; if(dx<-20) out.left=true; }
+
+    if(this.behavior==='attack'&&dist<105){
+      if(!f.onGround&&dy<-45)                  out.uair=true;
+      else if(!f.onGround)                     out.nair=true;
+      else if(t.damage>90&&Math.random()<0.35) out.fsmash=true;
+      else if(Math.random()<0.5)               out.ftilt=true;
+      else                                     out.jab=true;
+    }
+    return out;
+  }
+}
+
+// ── Game ──────────────────────────────────────────────────────────────────────
+class Game {
+  constructor(canvas, vsCpu){
+    this.canvas=canvas; this.ctx=canvas.getContext('2d');
+    this.vsCpu=vsCpu;
+    this.keys=new Set(); this.prevKeys=new Set();
+    this.particles=[];
+    this.stars=Array.from({length:90},()=>({x:Math.random()*W,y:Math.random()*H,r:0.6+Math.random()*1.4}));
+    this.running=true;
+    this._addListeners();
+    this._reset();
+    this._loop();
+  }
+
+  _addListeners(){
+    const BLOCK=['arrowup','arrowdown','arrowleft','arrowright',' '];
+    this._kd=e=>{ const k=e.key.toLowerCase(); this.keys.add(k); if(BLOCK.includes(k)) e.preventDefault(); };
+    this._ku=e=>{ this.keys.delete(e.key.toLowerCase()); };
+    window.addEventListener('keydown',this._kd);
+    window.addEventListener('keyup',  this._ku);
+  }
+
+  destroy(){ this.running=false; window.removeEventListener('keydown',this._kd); window.removeEventListener('keyup',this._ku); }
+
+  _reset(){
+    this.p1=new Fighter(240,360,'#4fc3f7','#0277bd','P1', 1);
+    this.p2=new Fighter(680,360,'#ef9a9a','#b71c1c',this.vsCpu?'CPU':'P2',-1);
+    this.cpu=this.vsCpu?new CPU(this.p2,this.p1):null;
+    this.particles=[]; this.items=[]; this.bullets=[]; this.explosions=[];
+    this.hitPause=0;
+    this.p1CanHit=true; this.p2CanHit=true;
+    this.gameOver=false; this.winner=null;
+    this.itemSpawnTimer=ITEM_SPAWN_MIN+Math.floor(Math.random()*(ITEM_SPAWN_MAX-ITEM_SPAWN_MIN));
+    this.tick=0;
+  }
+
+  _pressed(k){ return this.keys.has(k)&&!this.prevKeys.has(k); }
+
+  _loop(){
+    if(!this.running) return;
+    if(!this.gameOver) this._update();
+    this._draw();
+    if(this.gameOver){
+      if(this._pressed('r'))      this._reset();
+      if(this._pressed('escape')) this._returnToMenu();
+    }
+    this.prevKeys=new Set(this.keys);
+    requestAnimationFrame(()=>this._loop());
+  }
+
+  _returnToMenu(){ this.destroy(); document.getElementById('menu').style.display='flex'; }
+
+  // ── Update ──────────────────────────────────────────────────────────────────
+  _update(){
+    this.tick++;
+    if(this.hitPause>0){ this.hitPause--; return; }
+
+    // Item spawn timer
+    if(this.items.filter(i=>!i.holder).length<MAX_ITEMS){
+      if(--this.itemSpawnTimer<=0){
+        this._spawnItem();
+        this.itemSpawnTimer=ITEM_SPAWN_MIN+Math.floor(Math.random()*(ITEM_SPAWN_MAX-ITEM_SPAWN_MIN));
+      }
+    }
+
+    // Find nearest ground item for CPU consideration
+    const cpuNearItem = this.vsCpu
+      ? this.items.find(i=>!i.holder&&i.onGround&&Math.abs(i.x-this.p2.cx)<180)
+      : null;
+
+    this._playerInput(this.p1,'a','d','w','s','f','g');
+    if(this.vsCpu) this._cpuInput(this.p2,this.cpu.think(cpuNearItem));
+    else           this._playerInput(this.p2,'arrowleft','arrowright','arrowup','arrowdown','k','l');
+
+    for(const f of [this.p1,this.p2]) if(!f.dead){
+      this._physics(f);
+      this._tickAtk(f);
+      if(f.invincible>0) f.invincible--;
+      if(f.hitstun>0){
+        f.hitstun--;
+        // Drop held item when hit hard
+        if(f.heldItem&&f.hitstun>8) this._dropItem(f,f.facing*-3,-4);
+      }
+    }
+
+    this._updateItems();
+    this._updateBullets();
+    this._updateExplosions();
+    this._checkHits();
+    this._checkBlasts();
+    this._checkGameOver();
+    this.particles=this.particles.filter(p=>p.step());
+  }
+
+  // ── Player input ────────────────────────────────────────────────────────────
+  _playerInput(f,lk,rk,jk,dk,ak,sk){
+    if(f.dead||f.hitstun>0) return;
+    let moving=false;
+    if(this.keys.has(lk)){ f.vx=f.onGround?-WALK_SPD:Math.max(f.vx-0.85,-AIR_SPD); f.facing=-1; moving=true; }
+    if(this.keys.has(rk)){ f.vx=f.onGround? WALK_SPD:Math.min(f.vx+0.85, AIR_SPD); f.facing= 1; moving=true; }
+    if(this.keys.has(dk)&&!f.onGround&&f.vy>0) f.vy=Math.min(f.vy+2.5,MAX_FALL);
+    if(this._pressed(jk)&&f.jumps>0){
+      f.vy=f.jumps===2?JUMP_V:DJ_V; f.jumps--; f.onGround=false;
+      this._sparks(f.cx,f.y+PH,'#99bbff',5);
+    }
+    // Attack / item use
+    if(this._pressed(ak)){
+      if(f.heldItem)             this._useItem(f);
+      else if(!f.atkName&&f.atkCd<=0){
+        let atk;
+        if(!f.onGround) atk=this.keys.has(dk)?'dair':this.keys.has(jk)?'uair':'nair';
+        else            atk=moving?'ftilt':'jab';
+        f.startAttack(atk);
+      }
+    }
+    if(this._pressed(sk)){
+      if(f.heldItem)             this._throwItem(f);
+      else if(!f.atkName&&f.atkCd<=0) f.startAttack(f.onGround?'fsmash':'nair');
+    }
+  }
+
+  // ── CPU input ───────────────────────────────────────────────────────────────
+  _cpuInput(f,keys){
+    if(f.dead||f.hitstun>0) return;
+    if(keys.left){  f.vx=f.onGround?-WALK_SPD:Math.max(f.vx-0.85,-AIR_SPD); f.facing=-1; }
+    if(keys.right){ f.vx=f.onGround? WALK_SPD:Math.min(f.vx+0.85, AIR_SPD); f.facing= 1; }
+    if(keys.jump&&f.jumps>0){ f.vy=f.jumps===2?JUMP_V:DJ_V; f.jumps--; f.onGround=false; }
+    if(keys.useItem&&f.heldItem)       { this._useItem(f); return; }
+    if(keys.throwItem&&f.heldItem)     { this._throwItem(f); return; }
+    if(!f.atkName&&f.atkCd<=0){
+      for(const n of ['fsmash','ftilt','jab','uair','nair','dair'])
+        if(keys[n]){ f.startAttack(n); break; }
+    }
+  }
+
+  // ── Physics ─────────────────────────────────────────────────────────────────
+  _physics(f){
+    f.vy+=GRAVITY; f.vy=Math.min(f.vy,MAX_FALL);
+    f.x+=f.vx; f.y+=f.vy;
+    f.onGround=false;
+    for(const p of PLATFORMS){
+      if(f.vy>=0&&f.x+PW>p.x&&f.x<p.x+p.w&&f.y+PH>=p.y&&f.y+PH<=p.y+p.h+Math.abs(f.vy)+2){
+        f.y=p.y-PH; f.vy=0; f.onGround=true; f.jumps=2; break;
+      }
+    }
+    if(f.onGround&&f.hitstun<=0){ f.vx*=FRICTION; if(Math.abs(f.vx)<0.15) f.vx=0; }
+    else f.vx*=AIR_FRIC;
+
+    // Auto-pickup floor items
+    if(!f.heldItem&&!f.dead){
+      for(const item of this.items){
+        if(item.holder||item.thrown) continue;
+        if(Math.abs(item.x-f.cx)<28&&Math.abs(item.y-f.cy)<32){
+          item.holder=f; f.heldItem=item; break;
+        }
+      }
+    }
+  }
+
+  _tickAtk(f){
+    if(f.atkCd>0) f.atkCd--;
+    if(f.atkName){ f.atkFrame++; if(f.atkFrame>=f.atkDur){ f.atkName=null; f.atkFrame=0; } }
+  }
+
+  // ── Item system ──────────────────────────────────────────────────────────────
+  _spawnItem(){
+    // Pick a random platform, avoid edges
+    const plat=PLATFORMS[Math.floor(Math.random()*PLATFORMS.length)];
+    const x=plat.x+30+Math.random()*(plat.w-60);
+    const y=plat.y-14;
+    const type=Math.random()<0.5?'bomb':'blaster';
+    const item=new Item(type,x,y);
+    item.vy=-5; // small pop-in bounce
+    this.items.push(item);
+    // Announce with sparkles
+    this._spawnItemFx(x,y,type);
+  }
+
+  _spawnItemFx(x,y,type){
+    const col=type==='bomb'?'#ff6b35':'#a5d6f7';
+    for(let i=0;i<12;i++){
+      const a=Math.random()*Math.PI*2,s=2+Math.random()*3;
+      this.particles.push(new Particle(x,y,Math.cos(a)*s,Math.sin(a)*s,col,20+Math.random()*15|0,3));
+    }
+  }
+
+  _updateItems(){
+    for(let i=this.items.length-1;i>=0;i--){
+      const item=this.items[i];
+      item.bobT+=0.07;
+
+      if(item.holder){
+        // Stick to holder's hand
+        const f=item.holder;
+        item.x=f.cx+f.facing*18;
+        item.y=f.y+22;
+        item.onGround=false;
+        continue;
+      }
+
+      // Physics
+      if(!item.onGround){
+        item.vy+=GRAVITY*0.85;
+        item.vy=Math.min(item.vy,MAX_FALL);
+        item.x+=item.vx; item.y+=item.vy;
+        item.vx*=0.92;
+
+        // Platform landing
+        for(const p of PLATFORMS){
+          if(item.vy>=0&&item.x+8>p.x&&item.x-8<p.x+p.w&&item.y+8>=p.y&&item.y+8<=p.y+p.h+Math.abs(item.vy)+2){
+            item.y=p.y-8; item.vy=0; item.vx*=0.5; item.onGround=true; break;
+          }
+        }
+        // Blast zone removal
+        if(item.x<BZ_L||item.x>BZ_R||item.y>BZ_B){ this.items.splice(i,1); continue; }
+      }
+
+      // Bomb fuse countdown
+      if(item.type==='bomb'&&item.thrown){
+        item.fuseTimer--;
+        if(item.fuseTimer<=0){ this._explodeBomb(item); this.items.splice(i,1); continue; }
+
+        // Bomb hits fighters
+        for(const f of [this.p1,this.p2]){
+          if(f.dead||f.invincible>0) continue;
+          if(item.thrower===f&&item.throwerGrace>0){ item.throwerGrace--; continue; }
+          if(Math.abs(item.x-f.cx)<22&&Math.abs(item.y-f.cy)<26){
+            this._explodeBomb(item); this.items.splice(i,1); break;
+          }
+        }
+        continue;
+      }
+
+      if(item.onGround){
+        item.groundTimer++;
+        if(item.groundTimer>720){ this.items.splice(i,1); continue; } // 12s auto-despawn
+      }
+    }
+  }
+
+  _useItem(f){
+    const item=f.heldItem;
+    if(!item) return;
+    if(item.type==='bomb'){
+      // Lob the bomb in an arc
+      item.holder=null; f.heldItem=null;
+      item.thrown=true;
+      item.vx=f.facing*9;
+      item.vy=-9;
+      item.onGround=false;
+      item.fuseTimer=180;   // 3 second fuse
+      item.thrower=f; item.throwerGrace=20;
+      f.atkCd=18;
+    } else {
+      // Fire blaster bullet
+      const bx=f.cx+f.facing*22, by=f.cy;
+      this.bullets.push(new Bullet(bx,by,f.facing*16,f));
+      item.ammo--;
+      f.atkCd=16;
+      // Muzzle flash
+      this._hitFx(bx,by,0);
+      if(item.ammo<=0){ item.holder=null; f.heldItem=null; this.items.splice(this.items.indexOf(item),1); }
+    }
+  }
+
+  _throwItem(f){
+    const item=f.heldItem;
+    if(!item) return;
+    item.holder=null; f.heldItem=null;
+    item.thrown=true;
+    item.vx=f.facing*13;
+    item.vy=-5;
+    item.onGround=false;
+    item.thrower=f; item.throwerGrace=15;
+    if(item.type==='bomb') item.fuseTimer=240; // slightly longer fuse on hard throw
+    f.atkCd=14;
+  }
+
+  _dropItem(f,vx,vy){
+    const item=f.heldItem;
+    if(!item) return;
+    item.holder=null; f.heldItem=null;
+    item.vx=vx||0; item.vy=vy||-2;
+    item.onGround=false;
+    if(item.type==='bomb'&&item.thrown===false) item.fuseTimer=0; // disarm if not yet thrown
+    item.thrown=false; // becomes floor item again
+  }
+
+  _explodeBomb(item){
+    const exp=new Explosion(item.x,item.y);
+    this.explosions.push(exp);
+    // Damage fighters in radius
+    for(const f of [this.p1,this.p2]){
+      if(f.dead) continue;
+      const dist=Math.hypot(f.cx-item.x,f.cy-item.y);
+      if(dist<exp.radius+10){
+        const frac=1-dist/(exp.radius+10);
+        const srcFacing=f.cx<item.x?-1:1; // blow away from centre
+        const scaledAtk={dmg:Math.ceil(BOMB_DMG*frac), base_kb:BOMB_KB*frac, kb_s:BOMB_KB_S};
+        if(f.takeHit(scaledAtk,-srcFacing)){ // push AWAY from blast
+          this.hitPause=6;
+        }
+      }
+    }
+    // Big particle burst
+    for(let i=0;i<30;i++){
+      const a=Math.random()*Math.PI*2,s=4+Math.random()*8;
+      const col=['#ff6b35','#ff9800','#ffe040','#ffffff'][Math.floor(Math.random()*4)];
+      this.particles.push(new Particle(item.x,item.y,Math.cos(a)*s,Math.sin(a)*s,col,20+Math.random()*20|0,4+Math.random()*5|0));
+    }
+  }
+
+  _updateBullets(){
+    for(let i=this.bullets.length-1;i>=0;i--){
+      const b=this.bullets[i];
+      b.x+=b.vx; b.life--;
+      if(b.life<=0||b.x<0||b.x>W){ this.bullets.splice(i,1); continue; }
+
+      // Bullet trail
+      if(this.tick%2===0)
+        this.particles.push(new Particle(b.x,b.y,Math.random()*0.5-0.25,Math.random()*0.5-0.25,'#a5d6f7',8,2));
+
+      // Hit fighters
+      let hit=false;
+      for(const f of [this.p1,this.p2]){
+        if(f===b.owner||f.dead||f.invincible>0) continue;
+        if(b.x>f.x&&b.x<f.x+PW&&b.y>f.y&&b.y<f.y+PH){
+          const atk={dmg:BULLET_DMG,base_kb:BULLET_KB,kb_s:BULLET_KB_S};
+          if(f.takeHit(atk,b.vx>0?1:-1)){
+            this._hitFx(b.x,b.y,BULLET_DMG);
+            this.hitPause=3;
+            hit=true; break;
+          }
+        }
+      }
+      if(hit){ this.bullets.splice(i,1); }
+    }
+  }
+
+  _updateExplosions(){
+    for(let i=this.explosions.length-1;i>=0;i--){
+      this.explosions[i].frame++;
+      if(!this.explosions[i].alive) this.explosions.splice(i,1);
+    }
+  }
+
+  // ── Fighter hit detection ────────────────────────────────────────────────────
+  _checkHits(){
+    const pairs=[[this.p1,this.p2,'p1CanHit'],[this.p2,this.p1,'p2CanHit']];
+    for(const[atk,dfn,flag]of pairs){
+      if(atk.dead||dfn.dead) continue;
+      const hb=atk.hitbox();
+      if(!hb){ this[flag]=true; continue; }
+      if(!this[flag]) continue;
+      if(hb.x1<dfn.x+PW&&hb.x2>dfn.x&&hb.y1<dfn.y+PH&&hb.y2>dfn.y){
+        const ad=ATTACKS[atk.atkName];
+        if(dfn.takeHit(ad,atk.facing)){
+          this[flag]=false; this.hitPause=4;
+          this._hitFx((hb.x1+hb.x2)/2,(hb.y1+hb.y2)/2,ad.dmg);
+        }
+      }
+    }
+  }
+
+  _checkBlasts(){
+    for(const f of [this.p1,this.p2]){
+      if(f.dead){ if(f.stocks>0&&f.respTimer>0&&--f.respTimer===0) this._respawn(f); continue; }
+      if(f.x<BZ_L||f.x>BZ_R||f.y<BZ_T||f.y>BZ_B) this._kill(f);
+    }
+  }
+
+  _kill(f){
+    if(f.heldItem) this._dropItem(f,0,-3);
+    this._deathFx(f.cx,f.cy,f.color); f.stocks--; f.dead=true; f.respTimer=90;
+  }
+
+  _respawn(f){
+    const side=f===this.p1?1:-1;
+    f.x=W/2-PW/2+side*(20+Math.floor(Math.random()*70)); f.y=80;
+    f.vx=f.vy=0; f.damage=f.hitstun=0;
+    f.atkName=null; f.atkCd=0; f.jumps=2; f.onGround=false;
+    f.dead=false; f.invincible=110; f.heldItem=null;
+  }
+
+  _checkGameOver(){
+    for(const f of [this.p1,this.p2])
+      if(f.stocks<=0&&f.dead){ this.gameOver=true; this.winner=f===this.p1?this.p2:this.p1; }
+  }
+
+  // ── Particles ────────────────────────────────────────────────────────────────
+  _sparks(x,y,color,n){
+    for(let i=0;i<n;i++){
+      const a=Math.PI+Math.random()*Math.PI,s=1.5+Math.random()*2;
+      this.particles.push(new Particle(x,y,Math.cos(a)*s,Math.sin(a)*s,color,10+Math.random()*10|0,3));
+    }
+  }
+  _hitFx(x,y,dmg){
+    const col=dmg>=15?'#ffe040':dmg===0?'#a5d6f7':'#ff9900',n=dmg>=15?10:5;
+    for(let i=0;i<n;i++){
+      const a=Math.random()*Math.PI*2,s=2.5+Math.random()*4.5;
+      this.particles.push(new Particle(x,y,Math.cos(a)*s,Math.sin(a)*s,col,14+Math.random()*12|0,3+Math.random()*4|0));
+    }
+  }
+  _deathFx(x,y,color){
+    for(let i=0;i<24;i++){
+      const a=Math.random()*Math.PI*2,s=3.5+Math.random()*7.5;
+      this.particles.push(new Particle(x,y,Math.cos(a)*s,Math.sin(a)*s,color,28+Math.random()*24|0,4+Math.random()*6|0));
+    }
+  }
+
+  // ── Draw ─────────────────────────────────────────────────────────────────────
+  _draw(){
+    const ctx=this.ctx;
+    ctx.fillStyle='#10101e'; ctx.fillRect(0,0,W,H);
+
+    // Stars
+    ctx.fillStyle='#ffffff';
+    for(const{x,y,r}of this.stars){ ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill(); }
+
+    // Platforms
+    for(const p of PLATFORMS){
+      ctx.fillStyle='#0a0a18'; ctx.fillRect(p.x+5,p.y+5,p.w,p.h);
+      ctx.fillStyle='#c9a85c'; ctx.fillRect(p.x,p.y,p.w,p.h);
+      ctx.fillStyle='#ede0a8'; ctx.fillRect(p.x,p.y,p.w,5);
+    }
+
+    // Explosions (behind everything)
+    this._drawExplosions();
+
+    // Ground items
+    for(const item of this.items) if(!item.holder) this._drawItem(item);
+
+    // Particles
+    for(const p of this.particles){
+      const a=p.life/p.maxLife, s=Math.max(p.size*a,1);
+      ctx.globalAlpha=a; ctx.fillStyle=p.color;
+      ctx.beginPath(); ctx.arc(p.x,p.y,s,0,Math.PI*2); ctx.fill();
+    }
+    ctx.globalAlpha=1;
+
+    // Bullets
+    this._drawBullets();
+
+    // Fighters (items held are drawn as part of fighter)
+    for(const f of [this.p1,this.p2]) if(!f.dead) this._drawFighter(f);
+
+    this._drawHud();
+    if(this.gameOver&&this.winner) this._drawGameOver();
+  }
+
+  _drawItem(item){
+    const ctx=this.ctx;
+    const bob=item.onGround?Math.sin(item.bobT)*3:0;
+    const ix=item.x, iy=item.y+bob;
+
+    if(item.type==='bomb'){
+      // Body
+      ctx.fillStyle='#2d2d2d'; ctx.strokeStyle='#555'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(ix,iy,10,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      // Shine
+      ctx.fillStyle='rgba(255,255,255,0.2)';
+      ctx.beginPath(); ctx.arc(ix-3,iy-3,4,0,Math.PI*2); ctx.fill();
+      // Fuse
+      ctx.strokeStyle='#8B4513'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(ix+4,iy-8); ctx.bezierCurveTo(ix+8,iy-14,ix+2,iy-18,ix+5,iy-22); ctx.stroke();
+      // Fuse spark (flicker when thrown)
+      if(item.thrown&&item.fuseTimer>0){
+        const flicker=this.tick%6<3;
+        if(flicker){
+          ctx.fillStyle=item.fuseTimer<60?'#ff2200':'#ffaa00';
+          ctx.beginPath(); ctx.arc(ix+5,iy-22,3,0,Math.PI*2); ctx.fill();
+        }
+        // Fuse bar above item
+        const pct=item.fuseTimer/180;
+        ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(ix-14,iy-34,28,5);
+        ctx.fillStyle=pct>0.5?'#66bb6a':pct>0.25?'#ffa726':'#ef5350';
+        ctx.fillRect(ix-14,iy-34,28*pct,5);
+      }
+    } else {
+      // Blaster gun body
+      ctx.fillStyle='#37474f'; ctx.strokeStyle='#78909c'; ctx.lineWidth=1.5;
+      ctx.beginPath(); _roundRect(ctx,ix-12,iy-6,24,12,3); ctx.fill(); ctx.stroke();
+      // Barrel
+      ctx.fillStyle='#546e7a';
+      ctx.fillRect(ix+8,iy-3,10,6);
+      // Grip
+      ctx.fillStyle='#37474f';
+      ctx.beginPath(); _roundRect(ctx,ix-4,iy+5,8,8,2); ctx.fill(); ctx.stroke();
+      // Energy glow
+      ctx.fillStyle='#a5d6f7';
+      ctx.beginPath(); ctx.arc(ix-4,iy,4,0,Math.PI*2); ctx.fill();
+      // Ammo pips
+      for(let a=0;a<item.ammo;a++){
+        ctx.fillStyle='#4fc3f7';
+        ctx.fillRect(ix-11+a*4,iy-10,3,3);
+      }
+    }
+
+    // Glow outline when on ground (pickup indicator)
+    if(item.onGround){
+      ctx.strokeStyle=item.type==='bomb'?'rgba(255,107,53,0.5)':'rgba(79,195,247,0.5)';
+      ctx.lineWidth=2; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.arc(ix,iy,15,0,Math.PI*2); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  _drawBullets(){
+    const ctx=this.ctx;
+    for(const b of this.bullets){
+      const alpha=b.life/65;
+      ctx.globalAlpha=alpha;
+      // Core
+      ctx.fillStyle='#ffffff';
+      ctx.beginPath(); ctx.arc(b.x,b.y,4,0,Math.PI*2); ctx.fill();
+      // Glow
+      ctx.fillStyle='#4fc3f7';
+      ctx.beginPath(); ctx.arc(b.x,b.y,7,0,Math.PI*2); ctx.fill();
+      // Tail
+      ctx.fillStyle='rgba(79,195,247,0.4)';
+      ctx.beginPath(); ctx.arc(b.x-b.vx*0.6,b.y,3,0,Math.PI*2); ctx.fill();
+    }
+    ctx.globalAlpha=1;
+  }
+
+  _drawExplosions(){
+    const ctx=this.ctx;
+    for(const exp of this.explosions){
+      const pct=exp.frame/exp.maxFrame;
+      const r=exp.radius*Math.min(pct*2,1);
+      const alpha=(1-pct)*0.7;
+      // Outer ring
+      ctx.globalAlpha=alpha*0.6;
+      ctx.fillStyle='#ff6b35';
+      ctx.beginPath(); ctx.arc(exp.x,exp.y,r,0,Math.PI*2); ctx.fill();
+      // Inner bright core (fades faster)
+      ctx.globalAlpha=Math.max(0,(0.5-pct)*2*0.9);
+      ctx.fillStyle='#ffe040';
+      ctx.beginPath(); ctx.arc(exp.x,exp.y,r*0.5,0,Math.PI*2); ctx.fill();
+    }
+    ctx.globalAlpha=1;
+  }
+
+  _drawFighter(f){
+    if(f.invincible>0&&Math.floor(f.invincible/5)%2===0) return;
+    const ctx=this.ctx;
+    const{x,y,facing,color,dark}=f;
+
+    ctx.fillStyle='rgba(0,0,0,0.3)';
+    ctx.beginPath(); ctx.ellipse(x+PW/2,y+PH+3,PW/2-1,5,0,0,Math.PI*2); ctx.fill();
+
+    ctx.fillStyle=color; ctx.strokeStyle=dark; ctx.lineWidth=2;
+    ctx.beginPath(); _roundRect(ctx,x+4,y+18,PW-8,PH-18,5); ctx.fill(); ctx.stroke();
+
+    ctx.fillStyle=color; ctx.strokeStyle=dark; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(x+PW/2,y+14,13,0,Math.PI*2); ctx.fill(); ctx.stroke();
+
+    ctx.fillStyle=dark;
+    ctx.beginPath(); ctx.arc(x+PW/2+facing*5,y+12,3,0,Math.PI*2); ctx.fill();
+
+    const wobble=Math.abs(f.vx)>0.5?5:0;
+    ctx.strokeStyle=dark; ctx.lineWidth=3; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(x+PW/3,y+PH-6); ctx.lineTo(x+PW/3-wobble,y+PH+6); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x+2*PW/3,y+PH-6); ctx.lineTo(x+2*PW/3+wobble,y+PH+6); ctx.stroke();
+
+    const armY=y+28, armBase=facing===1?x+PW:x;
+
+    // Held item visual on arm
+    if(f.heldItem){
+      const hi=f.heldItem;
+      ctx.strokeStyle=dark; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.moveTo(armBase,armY); ctx.lineTo(armBase+facing*20,armY); ctx.stroke();
+      if(hi.type==='blaster'){
+        ctx.fillStyle='#37474f'; ctx.strokeStyle='#78909c'; ctx.lineWidth=1.5;
+        ctx.beginPath(); _roundRect(ctx,armBase+facing*14-6,armY-6,22,10,2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle='#4fc3f7';
+        ctx.beginPath(); ctx.arc(armBase+facing*14,armY-1,3,0,Math.PI*2); ctx.fill();
+        // Ammo label
+        ctx.fillStyle='#a5d6f7'; ctx.font='bold 9px Arial'; ctx.textAlign='center';
+        ctx.fillText('×'+hi.ammo,armBase+facing*22,armY-10);
+      } else {
+        ctx.fillStyle='#2d2d2d'; ctx.strokeStyle='#555'; ctx.lineWidth=1.5;
+        ctx.beginPath(); ctx.arc(armBase+facing*20,armY-2,8,0,Math.PI*2); ctx.fill(); ctx.stroke();
+        // Fuse spark
+        if(hi.thrown&&hi.fuseTimer>0&&this.tick%6<3){
+          ctx.fillStyle=hi.fuseTimer<60?'#ff2200':'#ffaa00';
+          ctx.beginPath(); ctx.arc(armBase+facing*20,armY-10,3,0,Math.PI*2); ctx.fill();
+        }
+      }
+    } else if(f.atkName&&f.atkFrame>=ATTACKS[f.atkName].st){
+      const reach=Math.floor(32*(1+Math.min(f.atkFrame-ATTACKS[f.atkName].st,5)*0.1));
+      const aex=armBase+facing*reach;
+      ctx.strokeStyle=dark; ctx.lineWidth=4;
+      ctx.beginPath(); ctx.moveTo(armBase,armY); ctx.lineTo(aex,armY+4); ctx.stroke();
+      ctx.fillStyle=color; ctx.strokeStyle=dark; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(aex,armY,7,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      const hb=f.hitbox();
+      if(hb){
+        ctx.strokeStyle='#ffe040'; ctx.lineWidth=2; ctx.setLineDash([4,3]);
+        ctx.strokeRect(hb.x1,hb.y1,hb.x2-hb.x1,hb.y2-hb.y1);
+        ctx.setLineDash([]);
+      }
+    } else {
+      ctx.strokeStyle=dark; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.moveTo(armBase,armY); ctx.lineTo(armBase+facing*12,armY+8); ctx.stroke();
+    }
+
+    if(f.hitstun>0){
+      ctx.fillStyle='rgba(255,60,60,0.38)';
+      ctx.beginPath(); ctx.arc(x+PW/2,y+14,13,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); _roundRect(ctx,x+4,y+18,PW-8,PH-18,5); ctx.fill();
+    }
+
+    const pc=f.damage;
+    ctx.fillStyle=pc>100?'#ef5350':pc>50?'#ffa726':'#66bb6a';
+    ctx.font='bold 11px Arial'; ctx.textAlign='center';
+    ctx.fillText(pc+'%',x+PW/2,y-6);
+  }
+
+  _drawHud(){
+    const ctx=this.ctx;
+    this._stockPanel(this.p1,80,H-52);
+    this._stockPanel(this.p2,W-80,H-52);
+    ctx.fillStyle='#2a3a4a'; ctx.font='11px Arial'; ctx.textAlign='center';
+    ctx.fillText(this.vsCpu?'vs CPU':'2-Player',W/2,20);
+    ctx.fillStyle='#1a2a3a'; ctx.font='9px Arial';
+    ctx.fillText('P1: WASD + F(use) G(throw)     P2: Arrows + K(use) L(throw)     R=Restart  Esc=Menu',W/2,H-6);
+  }
+
+  _stockPanel(f,cx,cy){
+    const ctx=this.ctx;
+    ctx.fillStyle=f.color; ctx.font='bold 13px Arial'; ctx.textAlign='center';
+    ctx.fillText(f.name,cx,cy-30);
+    ctx.fillStyle='#0f1c2e'; ctx.fillRect(cx-42,cy-16,84,33);
+    ctx.strokeStyle=f.color; ctx.lineWidth=2; ctx.strokeRect(cx-42,cy-16,84,33);
+    const pc=f.damage;
+    ctx.fillStyle=pc>100?'#ef5350':pc>50?'#ffa726':'#66bb6a';
+    ctx.font='bold 17px Arial'; ctx.fillText(pc+'%',cx,cy+10);
+    const n=Math.max(f.stocks,0);
+    for(let i=0;i<n;i++){
+      const sx=cx-(n-1)*20/2+i*20,sy=cy+28;
+      ctx.fillStyle=f.color; ctx.strokeStyle=f.dark; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(sx,sy,7,0,Math.PI*2); ctx.fill(); ctx.stroke();
+    }
+    if(f.dead&&f.respTimer>0){
+      ctx.fillStyle='#8899aa'; ctx.font='9px Arial'; ctx.fillText('Respawning…',cx,cy+46);
+    }
+  }
+
+  _drawGameOver(){
+    const ctx=this.ctx,w=this.winner;
+    ctx.fillStyle='rgba(0,0,0,0.65)'; ctx.fillRect(0,0,W,H);
+    const bx=W/2-220,by=H/2-115;
+    ctx.fillStyle='#0b1929'; ctx.fillRect(bx,by,440,230);
+    ctx.strokeStyle=w.color; ctx.lineWidth=3; ctx.strokeRect(bx,by,440,230);
+    ctx.fillStyle=w.color; ctx.font='bold 42px Arial'; ctx.textAlign='center';
+    ctx.fillText('GAME!',W/2,H/2-52);
+    ctx.fillStyle='#eceff1'; ctx.font='bold 28px Arial';
+    ctx.fillText(w.name+' WINS!',W/2,H/2+4);
+    ctx.fillStyle='#667788'; ctx.font='13px Arial';
+    ctx.fillText('R = rematch     Esc = menu',W/2,H/2+55);
+  }
+}
+
+// ── Canvas helper ─────────────────────────────────────────────────────────────
+function _roundRect(ctx,x,y,w,h,r){
+  ctx.moveTo(x+r,y);
+  ctx.lineTo(x+w-r,y); ctx.arcTo(x+w,y,x+w,y+r,r);
+  ctx.lineTo(x+w,y+h-r); ctx.arcTo(x+w,y+h,x+w-r,y+h,r);
+  ctx.lineTo(x+r,y+h); ctx.arcTo(x,y+h,x,y+h-r,r);
+  ctx.lineTo(x,y+r); ctx.arcTo(x,y,x+r,y,r);
+  ctx.closePath();
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+const canvas=document.getElementById('canvas');
+canvas.width=W; canvas.height=H;
+let game=null;
+
+function startGame(vsCpu){
+  document.getElementById('menu').style.display='none';
+  if(game) game.destroy();
+  game=new Game(canvas,vsCpu);
+}
+
+document.getElementById('btnCpu').onclick=()=>startGame(true);
+document.getElementById('btnP2').onclick= ()=>startGame(false);
+</script>
+</body>
+</html>
