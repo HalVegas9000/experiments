@@ -6,6 +6,14 @@ A browser-based card game inspired by Magic: The Gathering, with a food theme. B
 
 ```bash
 cd web_stuff/card_game
+./start.sh
+```
+
+This launches the server and opens the game in your default browser automatically.
+
+Alternatively, run the server directly:
+
+```bash
 python3 app.py
 ```
 
@@ -128,5 +136,6 @@ All Energy cards produce 1 calorie when tapped.
 card_game/
 ├── app.py        # Python HTTP server (port 8080)
 ├── index.html    # Complete game — HTML, CSS, JavaScript, and sound synthesis
+├── start.sh      # Startup script — launches server and opens browser
 └── README.md     # This file
 ```
