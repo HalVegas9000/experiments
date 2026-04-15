@@ -1,0 +1,1410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lucas Platformer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0d0d1a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: 'Courier New', monospace;
+    }
+    #ui {
+      display: flex;
+      gap: 40px;
+      color: #ccc;
+      font-size: 18px;
+      font-weight: bold;
+      margin-bottom: 8px;
+      text-shadow: 1px 1px 4px #000;
+      width: 800px;
+      justify-content: space-between;
+      letter-spacing: 1px;
+    }
+    #ui span { color: #a0e0ff; }
+    canvas {
+      border: 3px solid #3a2060;
+      box-shadow: 0 0 24px #6030c0aa;
+      display: block;
+      image-rendering: pixelated;
+    }
+    #controls {
+      color: #556;
+      font-size: 13px;
+      margin-top: 8px;
+      text-align: center;
+      letter-spacing: 1px;
+    }
+    #message {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(10,5,30,0.92);
+      color: #c080ff;
+      font-family: 'Courier New', monospace;
+      font-size: 30px;
+      font-weight: bold;
+      padding: 28px 52px;
+      border: 3px solid #7040c0;
+      border-radius: 6px;
+      text-align: center;
+      pointer-events: none;
+      display: none;
+      z-index: 10;
+      box-shadow: 0 0 30px #7040c066;
+    }
+    #message .sub { font-size: 15px; color: #99aacc; margin-top: 10px; }
+  </style>
+</head>
+<body>
+<div id="ui">
+  <div>LIVES: <span id="livesDisplay">3</span></div>
+  <div>AREA: <span id="levelDisplay">1</span></div>
+  <div>GEMS: <span id="coinDisplay">0</span></div>
+  <div>SCORE: <span id="scoreDisplay">0</span></div>
+</div>
+<div style="position:relative;">
+  <canvas id="canvas" width="800" height="480"></canvas>
+  <div id="message">
+    <div id="msgTitle"></div>
+    <div class="sub" id="msgSub"></div>
+  </div>
+</div>
+<div id="controls">Arrow Keys / WASD — Move &amp; Jump &nbsp;|&nbsp; Space — Jump &nbsp;|&nbsp; R — Restart &nbsp;|&nbsp; M — Achievements</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const W = 800, H = 480;
+const TILE = 32;
+
+// ── Achievements ──────────────────────────────────────────────────────────────
+const ACH_DEFS = [
+  { id:'gems25',      name:'Gem Hoarder',       desc:'Collect 25 gems',              icon:'💎' },
+  { id:'level1Gems',  name:'Thorough Explorer', desc:'Collect all gems in Level 1',  icon:'🗺' },
+  { id:'kills5',      name:'Monster Slayer',    desc:'Defeat 5 enemies',             icon:'⚔' },
+  { id:'kills10',     name:'Exterminator',      desc:'Defeat 10 enemies',            icon:'💀' },
+  { id:'beatLevel1',  name:'First Step',        desc:'Complete Level 1',             icon:'🏆' },
+];
+
+// Persist unlocked state in localStorage across sessions
+const ACH_KEY = 'lucasPlatformer_achievements';
+let achUnlocked = JSON.parse(localStorage.getItem(ACH_KEY)||'{}');
+// Toast queue: {title, desc, icon, timer}
+let achToasts = [];
+
+function unlockAchievement(id) {
+  if (achUnlocked[id]) return; // already have it
+  achUnlocked[id] = true;
+  localStorage.setItem(ACH_KEY, JSON.stringify(achUnlocked));
+  const def = ACH_DEFS.find(a=>a.id===id);
+  if (def) achToasts.push({ title:def.name, desc:def.desc, icon:def.icon, timer:220 });
+}
+
+function checkAchievements() {
+  // Total gems across full session
+  if (game.totalGems >= 25) unlockAchievement('gems25');
+  // All gems in level 1 collected
+  if (game.level === 1 && level.coins.every(c=>c.collected)) unlockAchievement('level1Gems');
+  // 5 enemy kills
+  if (game.totalKills >= 5)  unlockAchievement('kills5');
+  if (game.totalKills >= 10) unlockAchievement('kills10');
+}
+
+function drawAchievementToasts() {
+  let yOff = 12;
+  for (const t of achToasts) {
+    const alpha = t.timer > 40 ? 1 : t.timer / 40;
+    const slide = t.timer > 200 ? (220-t.timer)/20*180 : 180; // slide in from right
+    const tx = W - slide;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    // Panel
+    ctx.fillStyle = '#1a0d30';
+    roundRect(tx, yOff, 168, 46, 6);
+    ctx.fill();
+    ctx.strokeStyle = '#7040c0';
+    ctx.lineWidth = 2;
+    roundRect(tx, yOff, 168, 46, 6);
+    ctx.stroke();
+    // Gold top bar
+    ctx.fillStyle = '#d0a020';
+    roundRect(tx, yOff, 168, 6, 6);
+    ctx.fill();
+    // Icon
+    ctx.font = '20px serif';
+    ctx.fillText(t.icon, tx+8, yOff+30);
+    // Text
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 11px Courier New';
+    ctx.fillText(t.title, tx+34, yOff+18);
+    ctx.fillStyle = '#aaaacc';
+    ctx.font = '10px Courier New';
+    ctx.fillText(t.desc, tx+34, yOff+32);
+    ctx.restore();
+    yOff += 54;
+  }
+  // Tick timers
+  for (const t of achToasts) t.timer--;
+  achToasts = achToasts.filter(t=>t.timer>0);
+}
+
+let achMenuOpen = false;
+
+function drawAchievementMenu() {
+  // Dim background
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.75)';
+  ctx.fillRect(0, 0, W, H);
+
+  // Panel
+  const pw = 460, ph = 60 + ACH_DEFS.length * 70 + 20;
+  const px = (W - pw) / 2, py = (H - ph) / 2;
+  ctx.fillStyle = '#100820';
+  roundRect(px, py, pw, ph, 10);
+  ctx.fill();
+  ctx.strokeStyle = '#7040c0';
+  ctx.lineWidth = 2;
+  roundRect(px, py, pw, ph, 10);
+  ctx.stroke();
+
+  // Title bar
+  ctx.fillStyle = '#3a1870';
+  roundRect(px, py, pw, 44, 10);
+  ctx.fill();
+  ctx.fillStyle = '#7040c0';
+  roundRect(px, py, pw, 6, 10);
+  ctx.fill();
+
+  ctx.fillStyle = '#e0b0ff';
+  ctx.font = 'bold 18px Courier New';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('ACHIEVEMENTS', px + pw/2, py + 22);
+
+  // Close hint
+  ctx.fillStyle = '#556';
+  ctx.font = '11px Courier New';
+  ctx.fillText('Press M to close', px + pw/2, py + ph - 12);
+
+  // Achievement rows
+  const rowH = 62, rowX = px + 16, rowW = pw - 32;
+  for (let i = 0; i < ACH_DEFS.length; i++) {
+    const def = ACH_DEFS[i];
+    const ry = py + 52 + i * (rowH + 8);
+    const unlocked = !!achUnlocked[def.id];
+
+    // Row background
+    ctx.fillStyle = unlocked ? 'rgba(80,40,140,0.45)' : 'rgba(30,25,50,0.6)';
+    roundRect(rowX, ry, rowW, rowH, 6);
+    ctx.fill();
+    ctx.strokeStyle = unlocked ? '#7040c0' : '#2a2040';
+    ctx.lineWidth = 1.5;
+    roundRect(rowX, ry, rowW, rowH, 6);
+    ctx.stroke();
+
+    // Icon box
+    ctx.fillStyle = unlocked ? '#3a1870' : '#1a1530';
+    roundRect(rowX + 8, ry + 10, 42, 42, 5);
+    ctx.fill();
+    ctx.font = '24px serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.globalAlpha = unlocked ? 1 : 0.3;
+    ctx.fillText(def.icon, rowX + 29, ry + 31);
+    ctx.globalAlpha = 1;
+
+    // Name
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = unlocked ? '#ffd700' : '#555570';
+    ctx.font = 'bold 13px Courier New';
+    ctx.fillText(def.name, rowX + 60, ry + 24);
+
+    // Description
+    ctx.fillStyle = unlocked ? '#aaaacc' : '#3a384a';
+    ctx.font = '11px Courier New';
+    ctx.fillText(def.desc, rowX + 60, ry + 42);
+
+    // Status badge
+    const badgeX = rowX + rowW - 90, badgeY = ry + rowH/2 - 10;
+    ctx.fillStyle = unlocked ? '#2a6020' : '#2a2040';
+    roundRect(badgeX, badgeY, 78, 20, 4);
+    ctx.fill();
+    ctx.fillStyle = unlocked ? '#60ff60' : '#444460';
+    ctx.font = 'bold 10px Courier New';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(unlocked ? 'UNLOCKED' : 'LOCKED', badgeX + 39, badgeY + 10);
+  }
+
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.restore();
+}
+
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.lineTo(x+w-r,y); ctx.arcTo(x+w,y,x+w,y+r,r);
+  ctx.lineTo(x+w,y+h-r); ctx.arcTo(x+w,y+h,x+w-r,y+h,r);
+  ctx.lineTo(x+r,y+h); ctx.arcTo(x,y+h,x,y+h-r,r);
+  ctx.lineTo(x,y+r); ctx.arcTo(x,y,x+r,y,r);
+  ctx.closePath();
+}
+
+// ── State ────────────────────────────────────────────────────────────────────
+let game = {};
+function resetGame() {
+  achUnlocked = {};
+  localStorage.removeItem(ACH_KEY);
+  achToasts = [];
+  game = { level:1, coins:0, score:0, lives:3,
+           totalGems:0, totalKills:0,
+           state:'playing', stateTimer:0, camera:{x:0} };
+  loadLevel(1);
+}
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+const keys = {};
+window.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  MUSIC.start();   // starts on first keypress (browser requires user gesture)
+  MUSIC.resume();  // un-suspend if browser paused it
+  if (e.code === 'KeyR') resetGame();
+  if (e.code === 'KeyM') { achMenuOpen = !achMenuOpen; return; }
+  if ((e.code === 'Space'||e.code === 'ArrowUp'||e.code === 'KeyW') &&
+      (game.state === 'levelclear'||game.state === 'win')) {
+    if (game.state === 'levelclear') {
+      game.level++;
+      loadLevel(game.level);
+      game.state = 'playing';
+      hideMessage();
+    }
+  }
+  e.preventDefault();
+});
+window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+// ── Palette ───────────────────────────────────────────────────────────────────
+const PAL = {
+  // Sky
+  skyTop:    '#0a0520',
+  skyBot:    '#1a1050',
+  skyMid:    '#2a1860',
+  // Ground / stone
+  stoneDark: '#2e2a3a',
+  stoneMid:  '#3e3850',
+  stoneTop:  '#58505a',  // mossy cap
+  stoneGrass:'#2e6030',
+  stoneGrassLight:'#3a8040',
+  stoneEdge: '#1e1a28',
+  // Cracked stone block
+  crackFill: '#3a3448',
+  crackLine: '#252030',
+  // Rune block (replaces ?)
+  runeFill:  '#3a1870',
+  runeGlow:  '#8040e0',
+  runeEdge:  '#1a0840',
+  runeSymbol:'#e0b0ff',
+  // Used rune
+  usedFill:  '#2a2838',
+  usedEdge:  '#1a1828',
+  // Pillar (replaces pipe)
+  pillarBase:'#4a4060',
+  pillarMid: '#5a5070',
+  pillarCap: '#6a6080',
+  pillarLine:'#3a3050',
+  // Gems
+  gemBlue:   '#40c0ff',
+  gemRim:    '#0080cc',
+  gemShine:  '#a0f0ff',
+  // Player (knight)
+  armorSilver:'#b0b8c8',
+  armorDark:  '#7080a0',
+  armorGold:  '#d0a020',
+  visor:      '#4060a0',
+  visorGlow:  '#80b0ff',
+  cape:       '#8020a0',
+  capeDark:   '#501060',
+  skin:       '#d8a870',
+  // Slime
+  slimeGreen: '#30c040',
+  slimeDark:  '#187028',
+  slimeEye:   '#f0f0e0',
+  // Skeleton
+  boneWhite:  '#d8d8cc',
+  boneShadow: '#a0a094',
+  skullEye:   '#101010',
+  // Goal portal
+  portalOuter:'#8020d0',
+  portalInner:'#4000a0',
+  portalGlow: '#c060ff',
+  portalCore: '#ffffff',
+};
+
+// ── Tile helpers ──────────────────────────────────────────────────────────────
+// Types: 1=stone ground, 2=cracked block, 3=rune block, 4=pillar body, 5=pillar cap
+function makeTile(type, x, y) { return { type, x, y, hit:false }; }
+
+function buildLevel1() {
+  // ── Layout overview ──────────────────────────────────────────────────────
+  // x  0-11 : intro — solid ground, a few rune/cracked blocks overhead
+  // x 12-37 : platforming — pits, floating stone ledges, pillars, no blocks
+  // x 38-47 : block run — solid ground, rune/cracked clusters, portal at end
+  const W_T = 50;
+  const tiles = [];
+
+  // ── Ground ───────────────────────────────────────────────────────────────
+  // Intro: x=0-11 solid
+  for (let x = 0; x <= 11; x++) tiles.push(makeTile(1, x, 13));
+  // Platforming pits: gaps at 12-14, 20-22, 27-29, 34-35
+  for (let x = 15; x <= 19; x++) tiles.push(makeTile(1, x, 13));
+  for (let x = 23; x <= 26; x++) tiles.push(makeTile(1, x, 13));
+  for (let x = 30; x <= 33; x++) tiles.push(makeTile(1, x, 13));
+  for (let x = 36; x <= 37; x++) tiles.push(makeTile(1, x, 13));
+  // Block run: x=38-47 solid
+  for (let x = 38; x <= 47; x++) tiles.push(makeTile(1, x, 13));
+
+  // ── Section 1: intro blocks (x=0-11) ─────────────────────────────────────
+  // Low cluster at y=10
+  for (const [x,y,t] of [
+    [4,10,2],[5,10,3],[6,10,2],
+  ]) tiles.push(makeTile(t,x,y));
+  // Higher cluster at y=8
+  for (const [x,y,t] of [
+    [8,8,3],[9,8,2],[10,8,3],
+  ]) tiles.push(makeTile(t,x,y));
+
+  // ── Section 2: floating platforms (type 1 stone — no blocks) ─────────────
+  // Bridge over gap 12-14
+  for (const x of [13,14]) tiles.push(makeTile(1,x,10));
+  // Step up after gap
+  for (const x of [17,18]) tiles.push(makeTile(1,x,9));
+  // Bridge over gap 20-22
+  for (const x of [20,21,22]) tiles.push(makeTile(1,x,8));
+  // Drop-down ledge
+  tiles.push(makeTile(1,25,10));
+  tiles.push(makeTile(1,26,10));
+  // Bridge over gap 27-29
+  for (const x of [27,28,29]) tiles.push(makeTile(1,x,9));
+  // Mid ledge
+  for (const x of [31,32]) tiles.push(makeTile(1,x,8));
+  // Bridge over gap 34-35
+  for (const x of [34,35]) tiles.push(makeTile(1,x,10));
+  // Step to block run
+  tiles.push(makeTile(1,37,9));
+
+  // ── Pillars in platforming section ───────────────────────────────────────
+  // Pillar at x=11 (transition from intro, h=2)
+  tiles.push(makeTile(4,11,12)); tiles.push(makeTile(5,11,11));
+  // Pillar at x=17 (next to first step, h=3)
+  tiles.push(makeTile(4,16,12)); tiles.push(makeTile(4,16,11)); tiles.push(makeTile(5,16,10));
+  // Pillar at x=23 (after second gap, h=2)
+  tiles.push(makeTile(4,23,12)); tiles.push(makeTile(5,23,11));
+  // Tall pillar at x=30 (h=4)
+  for (let dy=0;dy<3;dy++) tiles.push(makeTile(4,30,12-dy));
+  tiles.push(makeTile(5,30,9));
+  // Short pillar at x=36 (h=2)
+  tiles.push(makeTile(4,36,12)); tiles.push(makeTile(5,36,11));
+
+  // ── Section 3: block run (x=38-47) ───────────────────────────────────────
+  // Low row at y=10
+  for (const [x,y,t] of [
+    [39,10,2],[40,10,3],[41,10,2],[42,10,3],
+  ]) tiles.push(makeTile(t,x,y));
+  // Mid row at y=8 — wider spread
+  for (const [x,y,t] of [
+    [38,8,3],[39,8,2],[40,8,3],[41,8,2],[42,8,3],[43,8,2],
+  ]) tiles.push(makeTile(t,x,y));
+  // High cluster near exit at y=6
+  for (const [x,y,t] of [
+    [44,6,3],[45,6,2],[46,6,3],
+  ]) tiles.push(makeTile(t,x,y));
+  // Low cracked step at y=10 near portal
+  for (const [x,y,t] of [
+    [44,10,2],[45,10,3],[46,10,2],
+  ]) tiles.push(makeTile(t,x,y));
+
+  // ── Enemies ───────────────────────────────────────────────────────────────
+  const enemies = [
+    // Intro section — one slime on the ground
+    {type:'slime',    x:9*TILE,  y:12*TILE, dir:1},
+    // Platforming — enemies on the floating ledges
+    {type:'slime',    x:17*TILE, y:8*TILE,  dir:-1},  // on [17,9]
+    {type:'skeleton', x:21*TILE, y:7*TILE,  dir:1},   // on [20-22,8]
+    {type:'slime',    x:28*TILE, y:8*TILE,  dir:-1},  // on [27-29,9]
+    {type:'skeleton', x:31*TILE, y:7*TILE,  dir:1},   // on [31-32,8]
+    // Block run — heavier resistance
+    {type:'skeleton', x:40*TILE, y:12*TILE, dir:-1},
+    {type:'slime',    x:43*TILE, y:12*TILE, dir:1},
+    {type:'skeleton', x:45*TILE, y:12*TILE, dir:-1},
+  ];
+
+  // ── Gems ──────────────────────────────────────────────────────────────────
+  const coins = [];
+  for (const [x,y] of [
+    // Intro — near blocks
+    [3,12],[4,9],[5,9],[9,7],[10,7],
+    // Platforming — along the path
+    [13,9],[14,9],
+    [18,8],[17,8],
+    [21,7],[22,7],
+    [25,9],[26,9],
+    [28,8],[29,8],
+    [31,7],[32,7],
+    [34,9],[35,9],
+    // Block run — tucked around blocks
+    [39,9],[40,9],[41,9],
+    [39,7],[40,7],[41,7],[42,7],
+    [44,5],[45,5],[46,5],
+    [44,9],[45,9],[46,9],
+  ]) coins.push({x:x*TILE+8,y:y*TILE,collected:false,bobOffset:Math.random()*Math.PI*2});
+
+  return {widthTiles:W_T,tiles,spawnX:TILE*2,spawnY:TILE*11,enemies,coins,goalX:(W_T-3)*TILE};
+}
+
+function buildLevel2() {
+  const W_T = 70;
+  const tiles = [];
+  for (let x=0;x<W_T;x++) {
+    if ((x>=12&&x<=14)||(x>=22&&x<=25)||(x>=38&&x<=41)||(x>=55&&x<=57)) continue;
+    tiles.push(makeTile(1,x,13));
+  }
+  const platforms = [
+    [4,10,2],[5,10,3],[6,10,2],
+    [8,8,3],[9,8,2],[10,8,3],[11,8,2],
+    [15,9,2],[16,9,3],[17,9,2],
+    [19,7,3],[20,7,2],[21,7,3],
+    [26,11,2],[27,11,3],[28,11,2],[29,11,3],
+    [26,8,3],[27,8,2],[28,8,3],
+    [31,9,2],[32,9,3],[33,9,2],[34,9,3],
+    [36,7,2],[37,7,3],
+    [42,10,3],[43,10,2],[44,10,3],
+    [42,7,2],[43,7,3],[44,7,2],
+    [46,9,2],[47,9,3],[48,9,2],
+    [50,11,2],[51,11,3],[52,11,2],[53,11,3],
+    [50,8,3],[51,8,2],[52,8,3],
+    [58,10,2],[59,10,3],[60,10,2],
+    [58,7,3],[59,7,2],[60,7,3],[61,7,2],
+    [63,9,2],[64,9,3],[65,9,2],
+  ];
+  for (const [x,y,t] of platforms) tiles.push(makeTile(t,x,y));
+  for (const [x,h] of [[7,2],[30,3],[45,2],[62,2]]) {
+    for (let dy=0;dy<h;dy++) tiles.push(makeTile(4,x,13-dy-1));
+    tiles.push(makeTile(5,x,13-h-1));
+  }
+  const enemies = [
+    {type:'slime',   x:4*TILE,  y:9*TILE,  dir:-1},
+    {type:'slime',   x:5*TILE,  y:9*TILE,  dir:1},
+    {type:'skeleton',x:9*TILE,  y:7*TILE,  dir:-1},
+    {type:'slime',   x:16*TILE, y:8*TILE,  dir:-1},
+    {type:'skeleton',x:20*TILE, y:6*TILE,  dir:1},
+    {type:'slime',   x:27*TILE, y:10*TILE, dir:-1},
+    {type:'slime',   x:28*TILE, y:7*TILE,  dir:1},
+    {type:'skeleton',x:33*TILE, y:8*TILE,  dir:-1},
+    {type:'slime',   x:43*TILE, y:9*TILE,  dir:-1},
+    {type:'skeleton',x:44*TILE, y:6*TILE,  dir:1},
+    {type:'slime',   x:47*TILE, y:8*TILE,  dir:-1},
+    {type:'slime',   x:51*TILE, y:10*TILE, dir:1},
+    {type:'skeleton',x:52*TILE, y:7*TILE,  dir:-1},
+    {type:'slime',   x:59*TILE, y:9*TILE,  dir:-1},
+    {type:'skeleton',x:60*TILE, y:6*TILE,  dir:1},
+    {type:'slime',   x:64*TILE, y:8*TILE,  dir:-1},
+  ];
+  const coins = [];
+  for (const [x,y] of [
+    [2,12],[3,12],[4,12],[5,9],[6,9],[9,7],[10,7],
+    [15,8],[16,8],[20,6],[21,6],[27,10],[28,7],[29,7],
+    [32,8],[33,8],[37,6],[42,9],[43,6],[44,6],
+    [47,8],[48,8],[51,10],[52,7],[53,7],[59,9],[60,6],[64,8],[65,8]
+  ]) coins.push({x:x*TILE+8,y:y*TILE,collected:false,bobOffset:Math.random()*Math.PI*2});
+  return {widthTiles:W_T,tiles,spawnX:TILE*2,spawnY:TILE*11,enemies,coins,goalX:(W_T-3)*TILE};
+}
+
+// ── Load Level ────────────────────────────────────────────────────────────────
+let level = null, player = null;
+
+function loadLevel(num) {
+  level = num===1 ? buildLevel1() : buildLevel2();
+  level.tileMap = {};
+  for (const t of level.tiles) level.tileMap[`${t.x},${t.y}`] = t;
+  for (const e of level.enemies) {
+    e.vx=e.dir*1.2; e.vy=0; e.onGround=false;
+    e.alive=true;
+  }
+  player = {x:level.spawnX,y:level.spawnY,vx:0,vy:0,
+            onGround:false,facingRight:true,dead:false,
+            deathTimer:0,invincible:0,walkPhase:0};
+  game.camera.x = 0;
+  hideMessage();
+}
+
+// ── Physics helpers ───────────────────────────────────────────────────────────
+function getTile(tx,ty){ return level.tileMap[`${tx},${ty}`]||null; }
+function isSolid(t){ return t&&(t.type===1||t.type===2||t.type===3||t.type===4||t.type===5); }
+const PW=24, PH=28;
+
+function tileCollide(entity,dx,dy,w,h) {
+  let {x,y} = entity;
+  x+=dx; y+=dy;
+  let onGround=false,hitCeiling=false,hitWall=false;
+  if (dy>0) {
+    const ty=Math.floor((y+h)/TILE);
+    for (let tx=Math.floor(x/TILE);tx<=Math.floor((x+w-1)/TILE);tx++) {
+      const t=getTile(tx,ty);
+      if (isSolid(t)){y=ty*TILE-h;onGround=true;entity.vy=0;break;}
+    }
+  } else if (dy<0) {
+    const ty=Math.floor(y/TILE);
+    for (let tx=Math.floor(x/TILE);tx<=Math.floor((x+w-1)/TILE);tx++) {
+      const t=getTile(tx,ty);
+      if (isSolid(t)){
+        y=(ty+1)*TILE; hitCeiling=true; entity.vy=0;
+        if (t.type===3&&!t.hit){
+          t.hit=true; game.coins++; game.score+=200;
+          spawnGemBurst(tx*TILE+TILE/2,ty*TILE);
+          spawnPopup(tx*TILE+TILE/2-game.camera.x,ty*TILE,'+200');
+        } else if (t.type===2&&!t.hit){
+          t.hit=true; game.score+=50;
+          spawnRockBurst(tx*TILE+TILE/2,ty*TILE);
+          killEnemiesOnTile(tx, ty);
+          level.tiles=level.tiles.filter(tile=>tile!==t);
+          delete level.tileMap[`${t.x},${t.y}`];
+        }
+        break;
+      }
+    }
+  }
+  if (dx!==0) {
+    const txArr=dx>0?[Math.floor((x+w)/TILE)]:[Math.floor(x/TILE)];
+    for (const tx of txArr) {
+      for (let ty=Math.floor(y/TILE);ty<=Math.floor((y+h-1)/TILE);ty++) {
+        const t=getTile(tx,ty);
+        if (isSolid(t)){x=dx>0?tx*TILE-w:(tx+1)*TILE;entity.vx=0;hitWall=true;break;}
+      }
+      if (hitWall) break;
+    }
+  }
+  return {x,y,onGround,hitCeiling,hitWall};
+}
+
+function rectsOverlap(ax,ay,aw,ah,bx,by,bw,bh){
+  return ax<bx+bw&&ax+aw>bx&&ay<by+bh&&ay+ah>by;
+}
+
+// ── Particles ─────────────────────────────────────────────────────────────────
+let particles=[], popups=[];
+
+function spawnGemBurst(x,y){
+  const colors=['#40c0ff','#80e0ff','#a0f0ff','#c0e0ff'];
+  for(let i=0;i<6;i++) particles.push({
+    x,y,vx:(Math.random()-.5)*4,vy:-Math.random()*6-2,
+    life:45,maxLife:45,color:colors[i%colors.length],type:'gem'
+  });
+}
+function killEnemiesOnTile(tx, ty) {
+  for (const e of level.enemies) {
+    if (!e.alive) continue;
+    const ew=28, eh=e.type==='skeleton'?30:24;
+    // Enemy is standing on this tile if their feet land on row ty and they overlap horizontally
+    if (Math.floor((e.y+eh)/TILE)===ty && e.x+ew>tx*TILE && e.x<(tx+1)*TILE) {
+      e.alive=false;
+      game.score+=200; game.totalKills++;
+      spawnPopup(e.x-game.camera.x, e.y, '+200', '#80ff80');
+      spawnStompEffect(e.x+ew/2, e.y+eh/2);
+      checkAchievements();
+    }
+  }
+}
+
+function spawnRockBurst(x,y){
+  for(let i=0;i<8;i++) particles.push({
+    x,y,vx:(Math.random()-.5)*5,vy:-Math.random()*5-2,
+    life:30,maxLife:30,color:PAL.stoneMid,type:'rock'
+  });
+}
+function spawnStompEffect(x,y){
+  for(let i=0;i<8;i++) particles.push({
+    x,y,vx:(Math.random()-.5)*5,vy:-Math.random()*4-1,
+    life:22,maxLife:22,color:'#c060ff',type:'star'
+  });
+}
+function spawnDeathEffect(x,y){
+  for(let i=0;i<14;i++){
+    const a=(i/14)*Math.PI*2;
+    particles.push({x,y,vx:Math.cos(a)*5,vy:Math.sin(a)*5-3,
+      life:40,maxLife:40,color:PAL.armorSilver,type:'star'});
+  }
+}
+function spawnPopup(x,y,text,color='#a0e0ff'){
+  popups.push({x,y,vy:-1.5,life:50,text,color});
+}
+
+// ── Game Loop ─────────────────────────────────────────────────────────────────
+const GRAVITY=0.55, JUMP=-13, WSPD=3.5, MFALL=14;
+let time=0;
+
+function update(){
+  if (achMenuOpen) return;
+  if (game.state!=='playing'){game.stateTimer++;return;}
+  time++;
+
+  // Player
+  if (!player.dead){
+    let moving=false;
+    if(keys['ArrowLeft']||keys['KeyA']){player.vx-=1.2;player.facingRight=false;moving=true;}
+    if(keys['ArrowRight']||keys['KeyD']){player.vx+=1.2;player.facingRight=true;moving=true;}
+    if(!moving) player.vx*=0.8;
+    player.vx=Math.max(-WSPD,Math.min(WSPD,player.vx));
+
+    if((keys['ArrowUp']||keys['KeyW']||keys['Space'])&&player.onGround){
+      player.vy=JUMP; player.onGround=false;
+    }
+    player.vy+=GRAVITY;
+    player.vy=Math.min(player.vy,MFALL);
+
+    const rx=tileCollide(player,player.vx,0,PW,PH);
+    player.x=rx.x;player.y=rx.y;
+    if(rx.hitWall) player.vx=0;
+
+    player.onGround=false;
+    const ry=tileCollide(player,0,player.vy,PW,PH);
+    player.x=ry.x;player.y=ry.y;
+    if(ry.onGround) player.onGround=true;
+
+    if(player.invincible>0) player.invincible--;
+    if(player.y>H+100) playerDie();
+    if(player.x<0) player.x=0;
+    if(moving&&player.onGround) player.walkPhase+=0.25; else if(!moving) player.walkPhase=0;
+
+    // Gem pickup
+    for(const c of level.coins){
+      if(c.collected) continue;
+      if(rectsOverlap(player.x,player.y,PW,PH,c.x,c.y,14,14)){
+        c.collected=true; game.coins++; game.totalGems++; game.score+=100;
+        spawnPopup(c.x-game.camera.x,c.y,'+100');
+        checkAchievements();
+      }
+    }
+
+    // Enemy collision
+    for(const e of level.enemies){
+      if(!e.alive) continue;
+      const ew=28,eh=e.type==='skeleton'?30:24;
+      if(rectsOverlap(player.x,player.y,PW,PH,e.x,e.y,ew,eh)){
+        const pBot=player.y+PH, eTop=e.y;
+        if(player.vy>0&&pBot-player.vy<=eTop+4){
+          // Stomp — both enemy types die immediately
+          e.alive=false;
+          game.score+=200; game.totalKills++;
+          spawnPopup(e.x-game.camera.x,e.y,'+200','#80ff80');
+          spawnStompEffect(e.x+ew/2,e.y+eh/2);
+          checkAchievements();
+          player.vy=-8;
+        } else if(player.invincible===0){
+          playerDie();
+        }
+      }
+    }
+
+    // Goal portal — only trigger when player centre is inside the portal ellipse
+    // Portal centre: (goalX+16, 7*TILE), radii 22×32
+    const pcx=player.x+PW/2, pcy=player.y+PH/2;
+    const pdx=pcx-(level.goalX+16), pdy=pcy-7*TILE;
+    if((pdx*pdx)/(22*22)+(pdy*pdy)/(32*32)<=1){
+      game.score+=500+game.coins*50;
+      if(game.level===1) unlockAchievement('beatLevel1');
+      if(game.level>=2){
+        game.state='win';
+        showMessage('QUEST COMPLETE!','Press R to play again');
+      } else {
+        game.state='levelclear';
+        showMessage('AREA CLEARED!','Press any key for next area');
+      }
+    }
+  } else {
+    player.vy+=0.4;
+    player.y+=player.vy;
+    player.deathTimer++;
+    if(player.deathTimer>120){
+      game.lives--;
+      if(game.lives<=0){game.state='gameover';showMessage('YOU HAVE FALLEN','Press R to restart');}
+      else{loadLevel(game.level);game.state='playing';}
+    }
+  }
+
+  // Enemies
+  for(const e of level.enemies){
+    if(!e.alive) continue;
+    e.vy+=GRAVITY; e.vy=Math.min(e.vy,MFALL);
+    const ew=28,eh=e.type==='skeleton'?30:24;
+    const ex=tileCollide(e,e.vx,0,ew,eh);
+    e.x=ex.x;e.y=ex.y;
+    if(ex.hitWall){ e.dir*=-1; e.vx=e.dir*1.2; }
+    e.onGround=false;
+    const ey=tileCollide(e,0,e.vy,ew,eh);
+    e.x=ey.x;e.y=ey.y;
+    if(ey.onGround) e.onGround=true;
+    if(e.onGround){
+      const ax=e.vx>0?Math.floor((e.x+ew)/TILE):Math.floor((e.x-1)/TILE);
+      const by=Math.floor((e.y+eh)/TILE);
+      if(!isSolid(getTile(ax,by))){ e.dir*=-1; e.vx=e.dir*1.2; }
+    }
+    if(e.y>H+200) e.alive=false;
+  }
+
+  // Particles / popups
+  for(const p of particles){p.x+=p.vx;p.y+=p.vy;p.vy+=0.3;p.life--;}
+  particles=particles.filter(p=>p.life>0);
+  for(const p of popups){p.y+=p.vy;p.life--;}
+  popups=popups.filter(p=>p.life>0);
+
+  // Camera
+  const tc=player.x-W/2+PW/2;
+  const mc=level.widthTiles*TILE-W;
+  game.camera.x+=(tc-game.camera.x)*0.12;
+  game.camera.x=Math.max(0,Math.min(mc,game.camera.x));
+
+  updateUI();
+}
+
+function playerDie(){
+  if(player.dead) return;
+  player.dead=true; player.vy=-12; player.vx=0; player.deathTimer=0;
+  spawnDeathEffect(player.x+PW/2,player.y+PH/2);
+}
+
+// ── Draw ──────────────────────────────────────────────────────────────────────
+function draw(){
+  const cx=Math.floor(game.camera.x);
+
+  // Sky
+  const grad=ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0,PAL.skyTop);
+  grad.addColorStop(0.5,PAL.skyMid);
+  grad.addColorStop(1,PAL.skyBot);
+  ctx.fillStyle=grad;
+  ctx.fillRect(0,0,W,H);
+
+  drawBackground(cx);
+
+  ctx.save();
+  ctx.translate(-cx,0);
+
+  for(const t of level.tiles) drawTile(t);
+  drawPortal(level.goalX);
+  for(const c of level.coins){
+    if(!c.collected) drawGem(c.x,c.y+Math.sin(time*0.07+c.bobOffset)*3);
+  }
+  for(const e of level.enemies){if(e.alive) drawEnemy(e);}
+  if(!player.dead||(player.deathTimer<20)){
+    if(!(player.invincible>0&&Math.floor(time/4)%2)) drawPlayer();
+  }
+  for(const p of particles){
+    ctx.save();
+    ctx.globalAlpha=p.life/p.maxLife;
+    if(p.type==='gem'){
+      ctx.fillStyle=p.color;
+      ctx.beginPath();
+      ctx.moveTo(p.x,p.y-5);ctx.lineTo(p.x+4,p.y);ctx.lineTo(p.x,p.y+5);ctx.lineTo(p.x-4,p.y);
+      ctx.closePath(); ctx.fill();
+    } else if(p.type==='rock'){
+      ctx.fillStyle=p.color;
+      ctx.fillRect(p.x-3,p.y-3,6,6);
+    } else {
+      ctx.fillStyle=p.color;
+      ctx.beginPath(); ctx.arc(p.x,p.y,3,0,Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  ctx.restore();
+
+  // Screen-space popups
+  for(const p of popups){
+    ctx.save();
+    ctx.globalAlpha=p.life/50;
+    ctx.fillStyle=p.color;
+    ctx.font='bold 15px Courier New';
+    ctx.fillText(p.text,p.x,p.y);
+    ctx.restore();
+  }
+
+  if(player.dead&&player.deathTimer>30){
+    ctx.save();
+    ctx.globalAlpha=Math.min(1,(player.deathTimer-30)/40)*0.5;
+    ctx.fillStyle='#000020';
+    ctx.fillRect(0,0,W,H);
+    ctx.restore();
+  }
+
+  drawAchievementToasts();
+  if (achMenuOpen) drawAchievementMenu();
+}
+
+// ── Background: mountains + stars ─────────────────────────────────────────────
+function drawBackground(cx){
+  // Stars (fast cache, parallax 0.05)
+  ctx.fillStyle='rgba(255,255,255,0.7)';
+  const starSeed=[[40,30],[120,15],[200,50],[310,20],[420,35],[540,10],[660,45],[750,25],
+                  [90,70],[250,65],[380,80],[500,55],[620,75],[710,60],
+                  [160,100],[340,90],[480,110],[600,95],[700,85]];
+  for(const [sx,sy] of starSeed){
+    const rx=(sx-cx*0.05+level.widthTiles*TILE*0.05)%(W+20)-10;
+    const twinkle=0.5+Math.sin(time*0.05+sx)*0.5;
+    ctx.globalAlpha=twinkle*0.8;
+    ctx.fillRect(rx,sy,2,2);
+  }
+  ctx.globalAlpha=1;
+
+  // Distant mountains (parallax 0.15)
+  ctx.fillStyle='#1a1035';
+  const mts=[[0,280],[100,220],[200,260],[340,200],[460,240],[580,210],[700,250],[820,230],[950,260],[1100,220],[1250,250]];
+  ctx.beginPath(); ctx.moveTo(-cx*0.15, H);
+  for(const [mx,my] of mts){
+    const rx=mx-cx*0.15;
+    ctx.lineTo(rx,my); ctx.lineTo(rx+80,H-100); ctx.lineTo(rx+160,my+30);
+  }
+  ctx.lineTo(W+200,H); ctx.closePath(); ctx.fill();
+
+  // Closer hills (parallax 0.3)
+  ctx.fillStyle='#1a2535';
+  ctx.beginPath(); ctx.moveTo(-200,H);
+  for(let hx=0;hx<level.widthTiles*TILE+200;hx+=120){
+    const rx=hx-cx*0.3;
+    ctx.lineTo(rx,H-60+Math.sin(hx*0.015)*30);
+  }
+  ctx.lineTo(level.widthTiles*TILE-cx*0.3,H);
+  ctx.closePath(); ctx.fill();
+}
+
+// ── Tile drawing ───────────────────────────────────────────────────────────────
+function drawTile(t){
+  const px=t.x*TILE, py=t.y*TILE;
+  if(t.type===1){
+    // Stone ground
+    ctx.fillStyle=PAL.stoneDark;
+    ctx.fillRect(px,py,TILE,TILE);
+    ctx.fillStyle=PAL.stoneMid;
+    ctx.fillRect(px+1,py+1,TILE-2,TILE-3);
+    // Grass cap
+    ctx.fillStyle=PAL.stoneGrass;
+    ctx.fillRect(px,py,TILE,6);
+    ctx.fillStyle=PAL.stoneGrassLight;
+    ctx.fillRect(px+2,py,TILE-4,3);
+    // Stone edge lines
+    ctx.strokeStyle=PAL.stoneEdge;
+    ctx.lineWidth=1;
+    ctx.strokeRect(px+0.5,py+0.5,TILE-1,TILE-1);
+    // Texture crack
+    ctx.strokeStyle='rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.moveTo(px+8,py+10); ctx.lineTo(px+14,py+18); ctx.lineTo(px+10,py+26);
+    ctx.stroke();
+  } else if(t.type===2){
+    // Cracked stone block
+    if(t.hit){
+      ctx.fillStyle='#1a1828'; ctx.fillRect(px,py,TILE,TILE); return;
+    }
+    ctx.fillStyle=PAL.crackFill;
+    ctx.fillRect(px,py,TILE,TILE);
+    ctx.fillStyle='rgba(255,255,255,0.06)';
+    ctx.fillRect(px+2,py+2,TILE-4,TILE/2-2);
+    // Cracks
+    ctx.strokeStyle=PAL.crackLine;
+    ctx.lineWidth=1.5;
+    ctx.beginPath();
+    ctx.moveTo(px+12,py+4); ctx.lineTo(px+8,py+14); ctx.lineTo(px+16,py+22); ctx.lineTo(px+12,py+28);
+    ctx.moveTo(px+20,py+6); ctx.lineTo(px+24,py+18);
+    ctx.stroke();
+    ctx.strokeStyle=PAL.stoneEdge;
+    ctx.lineWidth=2;
+    ctx.strokeRect(px+1,py+1,TILE-2,TILE-2);
+  } else if(t.type===3){
+    // Rune block
+    if(t.hit){
+      ctx.fillStyle=PAL.usedFill; ctx.fillRect(px,py,TILE,TILE);
+      ctx.strokeStyle=PAL.usedEdge; ctx.lineWidth=2; ctx.strokeRect(px+1,py+1,TILE-2,TILE-2);
+      return;
+    }
+    const pulse=0.65+Math.sin(time*0.08)*0.35;
+    ctx.fillStyle=PAL.runeFill;
+    ctx.fillRect(px,py,TILE,TILE);
+    // Glowing border
+    ctx.strokeStyle=PAL.runeGlow;
+    ctx.lineWidth=2;
+    ctx.globalAlpha=pulse;
+    ctx.strokeRect(px+2,py+2,TILE-4,TILE-4);
+    ctx.globalAlpha=1;
+    // Rune symbol (simple angular glyph)
+    ctx.fillStyle=PAL.runeSymbol;
+    ctx.globalAlpha=0.5+pulse*0.5;
+    ctx.font='bold 16px serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('᚛', px+TILE/2, py+TILE/2+1);
+    ctx.globalAlpha=1;
+  } else if(t.type===4){
+    // Pillar body
+    ctx.fillStyle=PAL.pillarBase;
+    ctx.fillRect(px,py,TILE,TILE);
+    ctx.fillStyle=PAL.pillarMid;
+    ctx.fillRect(px+3,py,TILE-6,TILE);
+    ctx.fillStyle=PAL.pillarLine;
+    ctx.fillRect(px+3,py,1,TILE);
+    ctx.fillRect(px+TILE-4,py,1,TILE);
+    ctx.fillStyle='rgba(255,255,255,0.08)';
+    ctx.fillRect(px+5,py,4,TILE);
+  } else if(t.type===5){
+    // Pillar cap
+    ctx.fillStyle=PAL.pillarCap;
+    ctx.fillRect(px-4,py,TILE+8,TILE);
+    ctx.fillStyle=PAL.pillarMid;
+    ctx.fillRect(px-2,py+6,TILE+4,TILE-6);
+    ctx.fillStyle=PAL.pillarBase;
+    ctx.fillRect(px-4,py,TILE+8,6);
+    // Cap decorative grooves
+    ctx.strokeStyle=PAL.pillarLine;
+    ctx.lineWidth=1;
+    ctx.beginPath();
+    ctx.moveTo(px-3,py+8); ctx.lineTo(px+TILE+3,py+8);
+    ctx.moveTo(px-3,py+14); ctx.lineTo(px+TILE+3,py+14);
+    ctx.stroke();
+  }
+}
+
+// ── Gem ───────────────────────────────────────────────────────────────────────
+function drawGem(x,y){
+  ctx.save();
+  const shine=0.6+Math.sin(time*0.12)*0.4;
+  // Shadow
+  ctx.fillStyle='rgba(0,0,0,0.25)';
+  ctx.beginPath(); ctx.ellipse(x+8,y+17,7,3,0,0,Math.PI*2); ctx.fill();
+  // Gem diamond shape
+  ctx.fillStyle=PAL.gemBlue;
+  ctx.beginPath();
+  ctx.moveTo(x+8,y); ctx.lineTo(x+16,y+7); ctx.lineTo(x+8,y+16); ctx.lineTo(x,y+7);
+  ctx.closePath(); ctx.fill();
+  // Darker lower half
+  ctx.fillStyle=PAL.gemRim;
+  ctx.beginPath();
+  ctx.moveTo(x,y+7); ctx.lineTo(x+8,y+16); ctx.lineTo(x+16,y+7); ctx.lineTo(x+8,y+11);
+  ctx.closePath(); ctx.fill();
+  // Shine facet
+  ctx.fillStyle=PAL.gemShine;
+  ctx.globalAlpha=shine*0.8;
+  ctx.beginPath();
+  ctx.moveTo(x+5,y+2); ctx.lineTo(x+10,y+5); ctx.lineTo(x+7,y+7); ctx.lineTo(x+3,y+5);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+// ── Portal (goal) ─────────────────────────────────────────────────────────────
+function drawPortal(gx){
+  const cy=7*TILE, cx2=gx+16;
+  const pulse=0.5+Math.sin(time*0.06)*0.5;
+  // Outer glow rings
+  for(let i=3;i>=0;i--){
+    ctx.save();
+    ctx.globalAlpha=(0.15+pulse*0.1)*(1-i*0.18);
+    ctx.strokeStyle=PAL.portalGlow;
+    ctx.lineWidth=6-i;
+    ctx.beginPath(); ctx.ellipse(cx2,cy,22+i*6,32+i*8,0,0,Math.PI*2); ctx.stroke();
+    ctx.restore();
+  }
+  // Outer ring
+  ctx.fillStyle=PAL.portalOuter;
+  ctx.beginPath(); ctx.ellipse(cx2,cy,22,32,0,0,Math.PI*2); ctx.fill();
+  // Inner void
+  ctx.fillStyle=PAL.portalInner;
+  ctx.beginPath(); ctx.ellipse(cx2,cy,15,24,0,0,Math.PI*2); ctx.fill();
+  // Swirling core
+  ctx.save();
+  ctx.globalAlpha=0.5+pulse*0.5;
+  ctx.fillStyle=PAL.portalCore;
+  ctx.beginPath(); ctx.ellipse(cx2,cy,5,8,time*0.05,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+  // Stone base pillar
+  ctx.fillStyle=PAL.pillarCap;
+  ctx.fillRect(gx+4,cy+32,24,12);
+  ctx.fillStyle=PAL.pillarMid;
+  ctx.fillRect(gx+8,cy+44,16,8*TILE-(cy+44-6*TILE));
+}
+
+// ── Enemy drawing ─────────────────────────────────────────────────────────────
+function drawEnemy(e){
+  const walk=Math.floor(time/10)%2;
+  const ew=28;
+  const px=e.x, py=e.y;
+
+  if(e.type==='slime'){
+    const eh=24;
+    ctx.save();
+    // Squash/stretch on walk
+    const sq=e.onGround?(1+Math.sin(time*0.2)*0.08):1;
+    ctx.translate(px+ew/2,py+eh);
+    ctx.scale(sq,2-sq);
+    ctx.translate(-(px+ew/2),-(py+eh));
+    // Body blob
+    ctx.fillStyle=PAL.slimeDark;
+    ctx.beginPath();
+    ctx.ellipse(px+ew/2,py+eh/2+3,ew/2,eh/2,0,0,Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle=PAL.slimeGreen;
+    ctx.beginPath();
+    ctx.ellipse(px+ew/2,py+eh/2,ew/2-2,eh/2-2,0,0,Math.PI*2);
+    ctx.fill();
+    // Highlight
+    ctx.fillStyle='rgba(180,255,180,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(px+ew/2-4,py+eh/2-5,6,5,-.4,0,Math.PI*2);
+    ctx.fill();
+    // Eyes
+    const eyeY=py+eh/2-2;
+    ctx.fillStyle=PAL.slimeEye;
+    ctx.beginPath(); ctx.arc(px+8,eyeY,5,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(px+20,eyeY,5,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#203830';
+    ctx.beginPath(); ctx.arc(px+9+(e.dir>0?1:-1),eyeY,2.5,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(px+21+(e.dir>0?1:-1),eyeY,2.5,0,Math.PI*2); ctx.fill();
+    // Drip
+    ctx.fillStyle=PAL.slimeGreen;
+    ctx.beginPath();
+    ctx.arc(px+ew/2,py+eh+2,4,0,Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  } else if(e.type==='skeleton'){
+    const eh=30;
+    ctx.save();
+    {
+      const legSwing=Math.sin(walk===0?0.4:-0.4);
+      // Pelvis / torso
+      ctx.fillStyle=PAL.boneWhite;
+      ctx.fillRect(px+7,py+14,14,10); // torso
+      ctx.fillStyle=PAL.boneShadow;
+      ctx.fillRect(px+9,py+16,10,6);
+      // Ribcage lines
+      ctx.strokeStyle=PAL.boneShadow;
+      ctx.lineWidth=1;
+      for(let r=0;r<3;r++){
+        ctx.beginPath();
+        ctx.moveTo(px+8,py+15+r*3); ctx.lineTo(px+20,py+15+r*3);
+        ctx.stroke();
+      }
+      // Skull
+      ctx.fillStyle=PAL.boneWhite;
+      ctx.beginPath(); ctx.ellipse(px+ew/2,py+8,9,9,0,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle=PAL.boneShadow;
+      ctx.beginPath(); ctx.ellipse(px+ew/2,py+14,7,4,0,Math.PI,0); ctx.fill();
+      // Eye sockets
+      ctx.fillStyle=PAL.skullEye;
+      const ex2=e.dir>0?px+ew/2+2:px+ew/2-6;
+      ctx.fillRect(ex2,py+6,5,5);
+      ctx.fillRect(ex2+7,py+6,5,5);
+      // Glowing red eyes
+      ctx.fillStyle='#cc2020';
+      ctx.globalAlpha=0.8+Math.sin(time*0.15)*0.2;
+      ctx.fillRect(ex2+1,py+7,3,3);
+      ctx.fillRect(ex2+8,py+7,3,3);
+      ctx.globalAlpha=1;
+      // Arms
+      ctx.fillStyle=PAL.boneWhite;
+      ctx.save();
+      ctx.translate(px+7,py+16);
+      ctx.rotate(-0.5+legSwing*0.5);
+      ctx.fillRect(-2,-10,4,12); // upper arm
+      ctx.beginPath(); ctx.arc(0,-10,3,0,Math.PI*2); ctx.fill();
+      ctx.restore();
+      ctx.save();
+      ctx.translate(px+21,py+16);
+      ctx.rotate(0.5-legSwing*0.5);
+      ctx.fillRect(-2,-10,4,12);
+      ctx.beginPath(); ctx.arc(0,-10,3,0,Math.PI*2); ctx.fill();
+      ctx.restore();
+      // Legs
+      ctx.fillStyle=PAL.boneWhite;
+      if(walk===0){
+        ctx.fillRect(px+8,py+23,5,9); ctx.fillRect(px+15,py+23,5,6);
+        ctx.fillRect(px+6,py+30,7,4); ctx.fillRect(px+13,py+27,7,4);
+      } else {
+        ctx.fillRect(px+8,py+23,5,6); ctx.fillRect(px+15,py+23,5,9);
+        ctx.fillRect(px+6,py+27,7,4); ctx.fillRect(px+13,py+30,7,4);
+      }
+    }
+    ctx.restore();
+  }
+}
+
+// ── Player drawing (knight) ───────────────────────────────────────────────────
+function drawPlayer(){
+  const px=player.x, py=player.y;
+  const bob=player.onGround?Math.sin(player.walkPhase)*1.5:0;
+  const moving=keys['ArrowLeft']||keys['KeyA']||keys['ArrowRight']||keys['KeyD'];
+  const legPhase=Math.floor(player.walkPhase/1.1)%2;
+
+  ctx.save();
+  ctx.translate(px+PW/2,py+PH/2+bob);
+  if(!player.facingRight) ctx.scale(-1,1);
+  ctx.translate(-PW/2,-PH/2);
+
+  // Cape (behind)
+  ctx.fillStyle=PAL.capeDark;
+  ctx.beginPath();
+  ctx.moveTo(6,8);
+  ctx.lineTo(2,12+Math.sin(time*0.1)*3);
+  ctx.lineTo(4,24+Math.sin(time*0.08+1)*2);
+  ctx.lineTo(8,20);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle=PAL.cape;
+  ctx.beginPath();
+  ctx.moveTo(7,8);
+  ctx.lineTo(3,12+Math.sin(time*0.1)*3);
+  ctx.lineTo(5,22+Math.sin(time*0.08+1)*2);
+  ctx.lineTo(8,19);
+  ctx.closePath(); ctx.fill();
+
+  // Legs
+  ctx.fillStyle=PAL.armorDark;
+  if(moving&&player.onGround){
+    if(legPhase===0){
+      ctx.fillRect(5,22,7,8); ctx.fillRect(13,22,7,5);
+      ctx.fillRect(4,29,8,3); ctx.fillRect(12,26,8,3);
+    } else {
+      ctx.fillRect(5,22,7,5); ctx.fillRect(13,22,7,8);
+      ctx.fillRect(4,26,8,3); ctx.fillRect(12,29,8,3);
+    }
+  } else {
+    ctx.fillRect(5,22,7,8); ctx.fillRect(13,22,7,8);
+    ctx.fillRect(4,28,8,3); ctx.fillRect(12,28,8,3);
+  }
+  // Boot highlights
+  ctx.fillStyle='rgba(255,255,255,0.15)';
+  ctx.fillRect(6,22,2,5); ctx.fillRect(14,22,2,5);
+
+  // Body armour
+  ctx.fillStyle=PAL.armorSilver;
+  ctx.fillRect(4,12,PW-8,12);
+  ctx.fillStyle=PAL.armorDark;
+  ctx.fillRect(4,12,PW-8,2);
+  // Pauldrons (shoulder plates)
+  ctx.fillStyle=PAL.armorSilver;
+  ctx.fillRect(1,12,6,6); ctx.fillRect(17,12,6,6);
+  ctx.fillStyle=PAL.armorGold;
+  ctx.fillRect(1,12,6,2); ctx.fillRect(17,12,6,2);
+  // Chest cross detail
+  ctx.strokeStyle=PAL.armorGold;
+  ctx.lineWidth=1.5;
+  ctx.beginPath();
+  ctx.moveTo(12,13); ctx.lineTo(12,23);
+  ctx.moveTo(5,18); ctx.lineTo(19,18);
+  ctx.stroke();
+  // Belt
+  ctx.fillStyle=PAL.armorGold;
+  ctx.fillRect(4,22,PW-8,2);
+
+  // Helmet
+  ctx.fillStyle=PAL.armorSilver;
+  ctx.beginPath();
+  ctx.arc(PW/2,8,9,Math.PI,0); // dome
+  ctx.rect(3,8,PW-6,4);
+  ctx.fill();
+  // Helm brim
+  ctx.fillStyle=PAL.armorDark;
+  ctx.fillRect(2,11,PW-4,3);
+  ctx.fillStyle=PAL.armorGold;
+  ctx.fillRect(2,11,PW-4,1.5);
+  // Visor slit
+  ctx.fillStyle=PAL.visor;
+  ctx.fillRect(6,8,12,4);
+  ctx.fillStyle=PAL.visorGlow;
+  ctx.globalAlpha=0.6+Math.sin(time*0.1)*0.4;
+  ctx.fillRect(7,9,10,2);
+  ctx.globalAlpha=1;
+  // Plume
+  ctx.fillStyle=PAL.cape;
+  ctx.beginPath();
+  ctx.moveTo(PW/2-1,0);
+  ctx.quadraticCurveTo(PW/2+4,3+Math.sin(time*0.15)*2,PW/2+2,7);
+  ctx.quadraticCurveTo(PW/2-2,4,PW/2-1,0);
+  ctx.fill();
+
+  // Sword (right hand)
+  ctx.save();
+  const swingAng=!player.onGround?-0.6:(moving&&legPhase===1?0.2:-0.1);
+  ctx.translate(PW-4,16);
+  ctx.rotate(swingAng);
+  // Crossguard
+  ctx.fillStyle=PAL.armorGold;
+  ctx.fillRect(-4,-2,8,3);
+  // Blade
+  ctx.fillStyle='#d0e0f0';
+  ctx.fillRect(-1.5,-16,3,14);
+  ctx.fillStyle='#ffffff';
+  ctx.fillRect(-0.5,-16,1.5,14);
+  // Pommel
+  ctx.fillStyle=PAL.armorGold;
+  ctx.beginPath(); ctx.arc(0,2,3,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+
+  ctx.restore();
+}
+
+// ── UI ────────────────────────────────────────────────────────────────────────
+function updateUI(){
+  document.getElementById('livesDisplay').textContent=game.lives;
+  document.getElementById('levelDisplay').textContent=game.level;
+  document.getElementById('coinDisplay').textContent=game.coins;
+  document.getElementById('scoreDisplay').textContent=game.score;
+}
+function showMessage(title,sub){
+  const m=document.getElementById('message');
+  document.getElementById('msgTitle').textContent=title;
+  document.getElementById('msgSub').textContent=sub;
+  m.style.display='block';
+}
+function hideMessage(){ document.getElementById('message').style.display='none'; }
+
+// ── Background Music (Web Audio API) ─────────────────────────────────────────
+const MUSIC = (() => {
+  let ac=null, master=null, playing=false, nextLoop=0;
+  const BPM=96, B=60/BPM;
+
+  // Frequency table
+  const N = {
+    D2:73.42,  F2:87.31,  G2:98.00,  A2:110.00, Bb2:116.54,
+    C3:130.81, D3:146.83, E3:164.81, F3:174.61, G3:196.00,
+    A3:220.00, Bb3:233.08,C4:261.63, D4:293.66, E4:329.63,
+    F4:349.23, G4:392.00, A4:440.00, Bb4:466.16,C5:523.25,
+    D5:587.33, E5:659.25,
+  };
+
+  // RPG theme in D minor — 32 beats (8 bars × 4/4)
+  // [frequency, beat_duration]  —  0 = rest
+  const MELODY = [
+    // ── Phrase 1 (bars 1-4) ──────────────────────────────────────────────
+    [N.D4,1],[0,0.5],[N.F4,0.5],[N.G4,0.75],[N.A4,1.25],   // bar 1
+    [N.A4,0.5],[N.G4,0.5],[N.F4,1],[N.E4,2],                // bar 2
+    [N.D4,1],[N.F4,0.5],[N.A4,0.5],[N.C5,1],[N.A4,1],       // bar 3
+    [N.G4,1.5],[N.F4,0.5],[N.E4,1],[N.D4,1],                // bar 4
+    // ── Phrase 2 (bars 5-8, higher register) ────────────────────────────
+    [N.A4,1],[0,0.5],[N.C5,0.5],[N.D5,0.75],[N.E5,1.25],   // bar 5
+    [N.E5,0.5],[N.D5,0.5],[N.C5,1],[N.A4,2],                // bar 6
+    [N.G4,1],[N.A4,0.5],[N.C5,0.5],[N.Bb4,1],[N.A4,1],     // bar 7
+    [N.G4,1],[N.F4,1],[N.E4,1],[N.D4,1],                    // bar 8
+  ];
+
+  // Walking bass line, 2 beats per note
+  const BASS = [
+    [N.D2,2],[N.F2,2],[N.C3,2],[N.A2,2],  // bars 1-2
+    [N.D2,2],[N.F2,2],[N.G2,2],[N.A2,2],  // bars 3-4
+    [N.D2,2],[N.F2,2],[N.C3,2],[N.A2,2],  // bars 1-2 repeat
+    [N.D2,2],[N.G2,2],[N.A2,2],[N.D2,2],  // bars 3-4 cadence
+    [N.A2,2],[N.C3,2],[N.D3,2],[N.E3,2],  // bars 5-6
+    [N.A2,2],[N.C3,2],[N.D3,2],[N.A2,2],  // bars 5-6 repeat
+    [N.G2,2],[N.A2,2],[N.Bb2,2],[N.A2,2], // bar 7
+    [N.D2,2],[N.G2,2],[N.A2,2],[N.D2,2],  // bar 8 cadence
+  ];
+
+  // Chord pads — one chord per 2 beats (16 total)
+  const CHORDS = [
+    [N.D3,N.F3,N.A3], [N.F3,N.A3,N.C4],   // bar 1
+    [N.C3,N.E3,N.G3], [N.A2,N.C3,N.E3],   // bar 2
+    [N.D3,N.F3,N.A3], [N.F3,N.A3,N.C4],   // bar 3
+    [N.G2,N.Bb2,N.D3],[N.A2,N.C3,N.E3],   // bar 4
+    [N.A2,N.C3,N.E3], [N.C3,N.E3,N.G3],   // bar 5
+    [N.A2,N.C3,N.E3], [N.D3,N.F3,N.A3],   // bar 6
+    [N.G2,N.Bb2,N.D3],[N.A2,N.C3,N.E3],   // bar 7
+    [N.D3,N.F3,N.A3], [N.G2,N.Bb2,N.D3],  // bar 8
+  ];
+
+  // Synthesise a short noise-based reverb impulse response
+  function makeReverb() {
+    const len = Math.floor(ac.sampleRate * 1.4);
+    const buf = ac.createBuffer(2, len, ac.sampleRate);
+    for (let c=0;c<2;c++) {
+      const d=buf.getChannelData(c);
+      for (let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,2.8);
+    }
+    const conv=ac.createConvolver(); conv.buffer=buf; return conv;
+  }
+
+  // Schedule a single note with an ADSR-like gain envelope
+  function note(dest, freq, t, dur, vol, type='triangle', atk=0.04, rel=0.15) {
+    const osc=ac.createOscillator(), env=ac.createGain();
+    osc.type=type; osc.frequency.setValueAtTime(freq,t);
+    env.gain.setValueAtTime(0,t);
+    env.gain.linearRampToValueAtTime(vol, t+atk);
+    env.gain.setValueAtTime(vol, t+dur-rel);
+    env.gain.linearRampToValueAtTime(0, t+dur);
+    osc.connect(env); env.connect(dest);
+    osc.start(t); osc.stop(t+dur+0.05);
+  }
+
+  function scheduleLoop(t0) {
+    // Shared reverb bus
+    const rev=makeReverb();
+    const revg=ac.createGain(); revg.gain.value=0.16;
+    rev.connect(revg); revg.connect(master);
+
+    // Melody bus: lowpass → master + reverb
+    const melF=ac.createBiquadFilter(); melF.type='lowpass'; melF.frequency.value=2000;
+    melF.connect(master); melF.connect(rev);
+
+    // Pad bus: heavier lowpass → master + reverb
+    const padF=ac.createBiquadFilter(); padF.type='lowpass'; padF.frequency.value=680;
+    padF.connect(master); padF.connect(rev);
+
+    let t=t0;
+    for (const [f,b] of MELODY) {
+      if (f) note(melF, f, t, b*B*0.86, 0.20);
+      t+=b*B;
+    }
+    t=t0;
+    for (const [f,b] of BASS) {
+      note(master, f, t, b*B*0.70, 0.13, 'sine', 0.02, 0.10);
+      t+=b*B;
+    }
+    t=t0;
+    for (const ch of CHORDS) {
+      for (const f of ch) note(padF, f, t, 2*B*0.90, 0.024, 'sawtooth', 0.14, 0.55);
+      t+=2*B;
+    }
+
+    const totalBeats=MELODY.reduce((s,[,b])=>s+b, 0);
+    nextLoop=t0+totalBeats*B;
+  }
+
+  function tick() {
+    if (!playing) return;
+    if (ac.currentTime >= nextLoop-0.4) scheduleLoop(nextLoop);
+    requestAnimationFrame(tick);
+  }
+
+  return {
+    start() {
+      if (playing) return;
+      ac=new(window.AudioContext||window.webkitAudioContext)();
+      const comp=ac.createDynamicsCompressor();
+      master=ac.createGain(); master.gain.value=0.42;
+      master.connect(comp); comp.connect(ac.destination);
+      playing=true;
+      scheduleLoop(ac.currentTime+0.15);
+      tick();
+    },
+    resume() { if (ac&&ac.state==='suspended') ac.resume(); },
+  };
+})();
+
+// ── Main loop ─────────────────────────────────────────────────────────────────
+function loop(){ update(); draw(); requestAnimationFrame(loop); }
+resetGame();
+loop();
+</script>
+</body>
+</html>
