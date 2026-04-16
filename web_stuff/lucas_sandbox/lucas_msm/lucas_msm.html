@@ -1,0 +1,1174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Humming Monsters</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0a1628;
+    font-family: 'Segoe UI', sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── HEADER ── */
+  #header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 20px;
+    background: linear-gradient(135deg, #1a3a1a, #0d2b0d);
+    border-bottom: 3px solid #2d6a2d;
+    z-index: 10;
+    flex-shrink: 0;
+  }
+  #header h1 {
+    color: #7fff7f;
+    font-size: 1.5rem;
+    text-shadow: 0 0 12px #3f3;
+    letter-spacing: 1px;
+  }
+  #coin-display {
+    background: #1a2a00;
+    border: 2px solid #8BC34A;
+    border-radius: 20px;
+    padding: 4px 14px;
+    color: #FFD700;
+    font-size: 1.1rem;
+    font-weight: bold;
+    min-width: 110px;
+    text-align: right;
+  }
+  #tempo-display {
+    color: #7fc; font-size: 0.85rem; opacity: 0.7;
+  }
+
+  /* ── ISLAND ── */
+  #island-wrap {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+  #island-bg {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(ellipse 70% 60% at 50% 60%, #1a4d2e 0%, #0e3320 50%, #071a0e 100%);
+  }
+  /* water shimmer */
+  #island-bg::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse 90% 80% at 50% 55%, transparent 58%, rgba(0,60,120,0.55) 100%);
+    pointer-events: none;
+  }
+  /* stars */
+  #stars {
+    position: absolute; inset: 0; pointer-events: none;
+  }
+
+  #island {
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -48%);
+    width: 720px;
+    height: 380px;
+    background: radial-gradient(ellipse 100% 90% at 50% 60%, #2d6a2d, #1e4d1e 70%, transparent 100%);
+    border-radius: 50%;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    align-items: center;
+    justify-items: center;
+    padding: 30px 60px 50px;
+    gap: 10px;
+  }
+
+  /* ── MONSTER SLOTS ── */
+  .monster-slot {
+    width: 120px;
+    height: 140px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    position: relative;
+    cursor: default;
+  }
+  .monster-slot.empty {
+    cursor: pointer;
+    opacity: 0.4;
+    filter: grayscale(1);
+    transition: opacity 0.2s, filter 0.2s;
+  }
+  .monster-slot.empty:hover { opacity: 0.7; filter: grayscale(0.5); }
+
+  .monster-body {
+    position: relative;
+    transition: transform 0.08s ease;
+  }
+  .monster-body.beat {
+    transform: translateY(-8px) scale(1.08);
+  }
+  .monster-label {
+    color: #aed; font-size: 0.65rem; text-align: center; margin-top: 3px;
+    text-shadow: 0 1px 3px #000;
+    white-space: nowrap;
+  }
+
+  /* glow ring when playing */
+  .monster-body::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
+    box-shadow: 0 0 0px transparent;
+    transition: box-shadow 0.1s;
+    pointer-events: none;
+  }
+  .monster-body.glow::after {
+    box-shadow: 0 0 18px 6px var(--glow-color, #7fff7f);
+  }
+
+  /* note particles */
+  .note-particle {
+    position: absolute;
+    font-size: 1.1rem;
+    pointer-events: none;
+    animation: floatNote 1.2s ease-out forwards;
+    z-index: 20;
+  }
+  @keyframes floatNote {
+    0%   { opacity: 1; transform: translateY(0) scale(1); }
+    100% { opacity: 0; transform: translateY(-55px) scale(0.5); }
+  }
+
+  /* ── SHOP ── */
+  #shop {
+    flex-shrink: 0;
+    background: linear-gradient(180deg, #0d1f0d, #0a1628);
+    border-top: 3px solid #2d6a2d;
+    padding: 8px 12px;
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    align-items: center;
+    height: 130px;
+  }
+  #shop::-webkit-scrollbar { height: 4px; }
+  #shop::-webkit-scrollbar-thumb { background: #2d6a2d; border-radius: 2px; }
+
+  .shop-card {
+    flex-shrink: 0;
+    width: 100px;
+    background: #0f2d0f;
+    border: 2px solid #3a7d3a;
+    border-radius: 10px;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s, transform 0.1s;
+    position: relative;
+  }
+  .shop-card:hover:not(.locked) { border-color: #7fff7f; transform: translateY(-2px); }
+  .shop-card.owned { border-color: #555; opacity: 0.5; cursor: default; }
+  .shop-card.locked { opacity: 0.35; cursor: not-allowed; }
+  .shop-card .card-name { color: #aed; font-size: 0.65rem; font-weight: bold; text-align: center; }
+  .shop-card .card-cost { color: #FFD700; font-size: 0.75rem; }
+  .shop-card .card-rate { color: #8BC34A; font-size: 0.6rem; }
+  .shop-card .card-tag {
+    position: absolute; top: -8px; right: -6px;
+    background: #1a5c1a; border: 1px solid #5f5; border-radius: 8px;
+    color: #7fff7f; font-size: 0.55rem; padding: 1px 5px;
+  }
+  .shop-card .card-preview { width: 52px; height: 52px; }
+
+  /* ── START BUTTON ── */
+  #start-overlay {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 100;
+    gap: 16px;
+  }
+  #start-overlay h2 { color: #7fff7f; font-size: 2rem; text-shadow: 0 0 20px #3f3; }
+  #start-overlay p { color: #aed; font-size: 0.9rem; max-width: 380px; text-align: center; }
+  #start-btn {
+    background: linear-gradient(135deg, #2d8a2d, #1a5c1a);
+    border: 2px solid #7fff7f;
+    color: #7fff7f;
+    font-size: 1.2rem;
+    padding: 12px 40px;
+    border-radius: 30px;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 0 20px rgba(127,255,127,0.3);
+  }
+  #start-btn:hover { transform: scale(1.05); box-shadow: 0 0 30px rgba(127,255,127,0.5); }
+
+  /* ── MUTE BTN ── */
+  #mute-btn {
+    background: none; border: 1px solid #555; color: #aaa;
+    padding: 4px 10px; border-radius: 12px; cursor: pointer; font-size: 0.8rem;
+  }
+  #mute-btn:hover { border-color: #aaa; color: #fff; }
+
+  /* scrolling water text */
+  #waterline {
+    position: absolute; bottom: 12px; left: 50%;
+    transform: translateX(-50%);
+    color: rgba(100,200,255,0.25); font-size: 0.7rem;
+    pointer-events: none; white-space: nowrap;
+    animation: waveText 6s ease-in-out infinite;
+  }
+  @keyframes waveText {
+    0%,100% { transform: translateX(-50%) translateY(0); }
+    50% { transform: translateX(-50%) translateY(3px); }
+  }
+
+  /* toast */
+  #toast {
+    position: fixed; top: 60px; left: 50%; transform: translateX(-50%);
+    background: #1a5c1a; border: 2px solid #5f5; border-radius: 20px;
+    color: #7fff7f; padding: 6px 20px; font-size: 0.9rem;
+    opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 200;
+  }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div id="start-overlay">
+  <h2>🎵 My Humming Monsters</h2>
+  <p>Each monster sings its own part. Unlock them all to build the full song!</p>
+  <p style="color:#8BC34A;font-size:0.75rem">Earn 🪙 coins over time — spend them in the shop below.</p>
+  <button id="start-btn">▶ Start Island</button>
+</div>
+
+<div id="header">
+  <h1>🎵 My Humming Monsters</h1>
+  <div id="tempo-display">♩ 100 BPM — G Major</div>
+  <div style="display:flex;gap:10px;align-items:center">
+    <button id="mute-btn">🔊 Mute</button>
+    <div id="coin-display">🪙 <span id="coin-count">30</span></div>
+  </div>
+</div>
+
+<div id="island-wrap">
+  <div id="island-bg"></div>
+  <canvas id="stars" width="1400" height="600"></canvas>
+  <div id="island">
+    <!-- 8 monster slots filled by JS -->
+  </div>
+  <div id="waterline">〜〜〜〜〜〜〜〜〜〜〜〜〜〜〜〜〜〜〜〜〜〜〜〜〜〜〜〜〜〜</div>
+</div>
+
+<div id="shop">
+  <!-- shop cards filled by JS -->
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  MONSTER DEFINITIONS
+// ═══════════════════════════════════════════════════════════
+
+// Note frequencies (G major)
+const NOTE = {
+  G2:98.00, A2:110.00, B2:123.47, C3:130.81, D3:146.83, E3:164.81,
+  G3:196.00, A3:220.00, B3:246.94, C4:261.63, D4:293.66, E4:329.63,
+  G4:392.00, A4:440.00, B4:493.88, D5:587.33, E5:659.25, G5:783.99,
+  A5:880.00, B5:987.77, D6:1174.66, E6:1318.51, G6:1567.98
+};
+
+// 32-step loop (2 bars, 16th notes, 100 BPM → step = 0.15s, loop = 4.8s)
+const BPM = 100;
+const STEPS = 32;
+const stepTime = () => 60 / BPM / 4; // seconds per 16th note
+
+// Each monster: { id, name, cost, coinRate, color, glowColor, svgFn, sequence }
+// sequence = [{step, freq, dur (in steps), vel (0-1)}, ...]  — for synth types
+// type: 'drum' | 'pluck' | 'sine' | 'pad' | 'flute' | 'cello'
+const MONSTERS = [
+  // ── NOGGIN (drums) ──────────────────────────────────────
+  {
+    id: 'noggin', name: 'Noggin', cost: 0, coinRate: 0.5,
+    color: '#8B7355', glowColor: '#d4a96a',
+    instrument: 'drum',
+    sequence: [
+      // kick
+      {step:0,  type:'kick'}, {step:8,  type:'kick'},
+      {step:16, type:'kick'}, {step:24, type:'kick'},
+      // snare
+      {step:8,  type:'snare'}, {step:24, type:'snare'},
+      // hats
+      {step:2,  type:'hat'}, {step:4,  type:'hat'}, {step:6,  type:'hat'},
+      {step:10, type:'hat'}, {step:12, type:'hat'}, {step:14, type:'hat'},
+      {step:18, type:'hat'}, {step:20, type:'hat'}, {step:22, type:'hat'},
+      {step:26, type:'hat'}, {step:28, type:'hat'}, {step:30, type:'hat'},
+    ],
+    svg: () => `<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+      <ellipse cx="40" cy="50" rx="32" ry="28" fill="#8B7355"/>
+      <ellipse cx="40" cy="50" rx="28" ry="24" fill="#a08060"/>
+      <!-- cracks -->
+      <path d="M35 30 L38 40 L34 48" stroke="#6b5535" stroke-width="1.5" fill="none"/>
+      <path d="M50 35 L47 44" stroke="#6b5535" stroke-width="1.2" fill="none"/>
+      <!-- eye -->
+      <ellipse cx="40" cy="46" rx="9" ry="10" fill="#fff"/>
+      <circle cx="40" cy="47" r="6" fill="#3a2a1a"/>
+      <circle cx="42" cy="45" r="2" fill="#7af"/>
+      <circle cx="43" cy="44" r="1" fill="#fff"/>
+      <!-- arms -->
+      <ellipse cx="13" cy="60" rx="7" ry="5" fill="#8B7355" transform="rotate(-30 13 60)"/>
+      <ellipse cx="67" cy="60" rx="7" ry="5" fill="#8B7355" transform="rotate(30 67 60)"/>
+      <!-- feet -->
+      <ellipse cx="28" cy="76" rx="9" ry="5" fill="#7a6444"/>
+      <ellipse cx="52" cy="76" rx="9" ry="5" fill="#7a6444"/>
+    </svg>`
+  },
+
+  // ── MAMMOTT (bass hum) ───────────────────────────────────
+  {
+    id: 'mammott', name: 'Mammott', cost: 40, coinRate: 1,
+    color: '#9B59B6', glowColor: '#c77dff',
+    instrument: 'hum',
+    sequence: [
+      {step:0,  freq:NOTE.G2, dur:7,  vel:0.7},
+      {step:8,  freq:NOTE.D3, dur:3,  vel:0.6},
+      {step:12, freq:NOTE.E3, dur:3,  vel:0.5},
+      {step:16, freq:NOTE.G2, dur:7,  vel:0.7},
+      {step:24, freq:NOTE.C3, dur:2,  vel:0.6},
+      {step:28, freq:NOTE.D3, dur:3,  vel:0.6},
+    ],
+    svg: () => `<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+      <!-- body fur -->
+      <ellipse cx="40" cy="52" rx="30" ry="25" fill="#7B3F9E"/>
+      <!-- fur spikes -->
+      <polygon points="14,40 10,26 20,36" fill="#9B59B6"/>
+      <polygon points="22,32 20,17 30,30" fill="#9B59B6"/>
+      <polygon points="40,28 38,13 48,27" fill="#9B59B6"/>
+      <polygon points="58,32 62,17 52,30" fill="#9B59B6"/>
+      <polygon points="66,40 72,26 62,36" fill="#9B59B6"/>
+      <!-- head -->
+      <ellipse cx="40" cy="38" rx="20" ry="18" fill="#9B59B6"/>
+      <!-- ears -->
+      <ellipse cx="22" cy="26" rx="7" ry="9" fill="#7B3F9E"/>
+      <ellipse cx="58" cy="26" rx="7" ry="9" fill="#7B3F9E"/>
+      <ellipse cx="22" cy="26" rx="4" ry="6" fill="#e0c0f0"/>
+      <ellipse cx="58" cy="26" rx="4" ry="6" fill="#e0c0f0"/>
+      <!-- eyes -->
+      <circle cx="33" cy="36" r="5" fill="#fff"/>
+      <circle cx="47" cy="36" r="5" fill="#fff"/>
+      <circle cx="33" cy="36" r="3" fill="#1a0a2a"/>
+      <circle cx="47" cy="36" r="3" fill="#1a0a2a"/>
+      <circle cx="34" cy="35" r="1" fill="#fff"/>
+      <circle cx="48" cy="35" r="1" fill="#fff"/>
+      <!-- tusks -->
+      <path d="M30 50 Q22 60 18 68" stroke="#fffde7" stroke-width="4" fill="none" stroke-linecap="round"/>
+      <path d="M50 50 Q58 60 62 68" stroke="#fffde7" stroke-width="4" fill="none" stroke-linecap="round"/>
+      <!-- trunk -->
+      <path d="M36 48 Q32 56 30 62 Q32 66 38 64" stroke="#7B3F9E" stroke-width="6" fill="none" stroke-linecap="round"/>
+      <!-- mouth open when singing -->
+      <ellipse cx="40" cy="46" rx="5" ry="3" fill="#3a1a5a"/>
+    </svg>`
+  },
+
+  // ── TOE JAMMER (bass pluck) ──────────────────────────────
+  {
+    id: 'toejammer', name: 'Toe Jammer', cost: 80, coinRate: 1.5,
+    color: '#27AE60', glowColor: '#55ff88',
+    instrument: 'pluck',
+    sequence: [
+      {step:0,  freq:NOTE.G2, dur:2, vel:0.8},
+      {step:4,  freq:NOTE.G2, dur:1, vel:0.7},
+      {step:6,  freq:NOTE.D3, dur:1, vel:0.7},
+      {step:8,  freq:NOTE.G3, dur:2, vel:0.8},
+      {step:12, freq:NOTE.D3, dur:1, vel:0.6},
+      {step:14, freq:NOTE.E3, dur:1, vel:0.6},
+      {step:16, freq:NOTE.G2, dur:2, vel:0.8},
+      {step:20, freq:NOTE.G2, dur:1, vel:0.7},
+      {step:22, freq:NOTE.C3, dur:1, vel:0.7},
+      {step:24, freq:NOTE.D3, dur:2, vel:0.8},
+      {step:28, freq:NOTE.D3, dur:1, vel:0.6},
+      {step:30, freq:NOTE.G2, dur:1, vel:0.7},
+    ],
+    svg: () => `<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+      <!-- toes at bottom -->
+      <ellipse cx="20" cy="74" rx="8" ry="6" fill="#1e7a44"/>
+      <ellipse cx="32" cy="76" rx="8" ry="6" fill="#1e7a44"/>
+      <ellipse cx="44" cy="77" rx="8" ry="6" fill="#1e7a44"/>
+      <ellipse cx="56" cy="76" rx="8" ry="6" fill="#1e7a44"/>
+      <ellipse cx="66" cy="74" rx="7" ry="6" fill="#1e7a44"/>
+      <!-- body -->
+      <ellipse cx="40" cy="48" rx="30" ry="26" fill="#27AE60"/>
+      <!-- belly -->
+      <ellipse cx="40" cy="54" rx="18" ry="14" fill="#2ecc71"/>
+      <!-- big grin -->
+      <path d="M24 56 Q40 70 56 56" stroke="#1a5c30" stroke-width="3" fill="#fff" stroke-linejoin="round"/>
+      <!-- teeth -->
+      <rect x="29" y="57" width="5" height="6" rx="1" fill="#fff" stroke="#1a5c30" stroke-width="0.5"/>
+      <rect x="36" y="59" width="5" height="6" rx="1" fill="#fff" stroke="#1a5c30" stroke-width="0.5"/>
+      <rect x="43" y="59" width="5" height="6" rx="1" fill="#fff" stroke="#1a5c30" stroke-width="0.5"/>
+      <rect x="50" y="57" width="5" height="6" rx="1" fill="#fff" stroke="#1a5c30" stroke-width="0.5"/>
+      <!-- eyes -->
+      <ellipse cx="30" cy="40" rx="8" ry="9" fill="#fff"/>
+      <ellipse cx="50" cy="40" rx="8" ry="9" fill="#fff"/>
+      <circle cx="30" cy="41" r="5" fill="#1a4a2a"/>
+      <circle cx="50" cy="41" r="5" fill="#1a4a2a"/>
+      <circle cx="31" cy="39" r="1.5" fill="#fff"/>
+      <circle cx="51" cy="39" r="1.5" fill="#fff"/>
+    </svg>`
+  },
+
+  // ── TWEEDLE (high melody) ────────────────────────────────
+  {
+    id: 'tweedle', name: 'Tweedle', cost: 120, coinRate: 2,
+    color: '#F1C40F', glowColor: '#ffe066',
+    instrument: 'sine',
+    sequence: [
+      {step:0,  freq:NOTE.G5, dur:1, vel:0.6},
+      {step:2,  freq:NOTE.B4, dur:1, vel:0.5},
+      {step:4,  freq:NOTE.D5, dur:2, vel:0.6},
+      {step:8,  freq:NOTE.G5, dur:1, vel:0.6},
+      {step:10, freq:NOTE.A5, dur:1, vel:0.5},
+      {step:12, freq:NOTE.B5, dur:2, vel:0.6},
+      {step:16, freq:NOTE.G5, dur:1, vel:0.6},
+      {step:18, freq:NOTE.E5, dur:1, vel:0.5},
+      {step:20, freq:NOTE.D5, dur:2, vel:0.6},
+      {step:24, freq:NOTE.B4, dur:1, vel:0.5},
+      {step:26, freq:NOTE.D5, dur:1, vel:0.5},
+      {step:28, freq:NOTE.G5, dur:3, vel:0.7},
+    ],
+    svg: () => `<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+      <!-- tail feathers -->
+      <ellipse cx="12" cy="58" rx="8" ry="4" fill="#e6b800" transform="rotate(-40 12 58)"/>
+      <ellipse cx="8" cy="52" rx="8" ry="4" fill="#f1c40f" transform="rotate(-55 8 52)"/>
+      <!-- wings -->
+      <ellipse cx="16" cy="46" rx="16" ry="8" fill="#e6b800" transform="rotate(-20 16 46)"/>
+      <ellipse cx="64" cy="46" rx="16" ry="8" fill="#e6b800" transform="rotate(20 64 46)"/>
+      <!-- body -->
+      <ellipse cx="40" cy="52" rx="22" ry="20" fill="#F1C40F"/>
+      <!-- belly -->
+      <ellipse cx="40" cy="56" rx="12" ry="10" fill="#fff9c4"/>
+      <!-- head -->
+      <circle cx="40" cy="30" r="18" fill="#F1C40F"/>
+      <!-- beak -->
+      <polygon points="40,38 33,42 47,42" fill="#e67e00"/>
+      <!-- eyes -->
+      <circle cx="32" cy="26" r="6" fill="#fff"/>
+      <circle cx="48" cy="26" r="6" fill="#fff"/>
+      <circle cx="32" cy="27" r="4" fill="#1a1a00"/>
+      <circle cx="48" cy="27" r="4" fill="#1a1a00"/>
+      <circle cx="33" cy="25" r="1.5" fill="#fff"/>
+      <circle cx="49" cy="25" r="1.5" fill="#fff"/>
+      <!-- crest -->
+      <ellipse cx="40" cy="13" rx="4" ry="8" fill="#e6b800" transform="rotate(-5 40 13)"/>
+      <ellipse cx="33" cy="16" rx="3" ry="7" fill="#f1c40f" transform="rotate(-25 33 16)"/>
+      <ellipse cx="47" cy="16" rx="3" ry="7" fill="#f1c40f" transform="rotate(25 47 16)"/>
+    </svg>`
+  },
+
+  // ── POTBELLY (mid melody) ────────────────────────────────
+  {
+    id: 'potbelly', name: 'Potbelly', cost: 180, coinRate: 2.5,
+    color: '#3498DB', glowColor: '#66bbff',
+    instrument: 'triangle',
+    sequence: [
+      {step:0,  freq:NOTE.G4, dur:2, vel:0.65},
+      {step:4,  freq:NOTE.B4, dur:1, vel:0.6},
+      {step:6,  freq:NOTE.D5, dur:1, vel:0.6},
+      {step:8,  freq:NOTE.G4, dur:2, vel:0.65},
+      {step:12, freq:NOTE.E4, dur:2, vel:0.55},
+      {step:16, freq:NOTE.G4, dur:2, vel:0.65},
+      {step:20, freq:NOTE.A4, dur:1, vel:0.6},
+      {step:22, freq:NOTE.B4, dur:1, vel:0.6},
+      {step:24, freq:NOTE.D5, dur:2, vel:0.65},
+      {step:28, freq:NOTE.B4, dur:2, vel:0.6},
+    ],
+    svg: () => `<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+      <!-- big pot belly -->
+      <ellipse cx="40" cy="58" rx="28" ry="20" fill="#2980b9"/>
+      <!-- body -->
+      <ellipse cx="40" cy="46" rx="24" ry="28" fill="#3498DB"/>
+      <!-- highlight belly -->
+      <ellipse cx="40" cy="58" rx="18" ry="12" fill="#5dade2" opacity="0.5"/>
+      <!-- tiny arms -->
+      <ellipse cx="16" cy="48" rx="8" ry="5" fill="#2980b9" transform="rotate(30 16 48)"/>
+      <ellipse cx="64" cy="48" rx="8" ry="5" fill="#2980b9" transform="rotate(-30 64 48)"/>
+      <!-- tiny hands -->
+      <circle cx="10" cy="53" r="5" fill="#3498DB"/>
+      <circle cx="70" cy="53" r="5" fill="#3498DB"/>
+      <!-- head -->
+      <circle cx="40" cy="22" r="18" fill="#3498DB"/>
+      <!-- eyes -->
+      <ellipse cx="32" cy="19" rx="6" ry="7" fill="#fff"/>
+      <ellipse cx="48" cy="19" rx="6" ry="7" fill="#fff"/>
+      <circle cx="32" cy="20" r="4" fill="#0a1a2a"/>
+      <circle cx="48" cy="20" r="4" fill="#0a1a2a"/>
+      <circle cx="33" cy="18" r="1.5" fill="#fff"/>
+      <circle cx="49" cy="18" r="1.5" fill="#fff"/>
+      <!-- smile -->
+      <path d="M33 30 Q40 37 47 30" stroke="#1a4a6a" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      <!-- feet -->
+      <ellipse cx="28" cy="77" rx="9" ry="5" fill="#2980b9"/>
+      <ellipse cx="52" cy="77" rx="9" ry="5" fill="#2980b9"/>
+    </svg>`
+  },
+
+  // ── FURCORN (chord harmony) ──────────────────────────────
+  {
+    id: 'furcorn', name: 'Furcorn', cost: 260, coinRate: 3,
+    color: '#1E8449', glowColor: '#44ff88',
+    instrument: 'chord',
+    sequence: [
+      // G major chord stabs: G4 + B4 + D5
+      {step:0,  freq:NOTE.G4, dur:3, vel:0.5},
+      {step:0,  freq:NOTE.B4, dur:3, vel:0.45},
+      {step:0,  freq:NOTE.D5, dur:3, vel:0.4},
+      {step:8,  freq:NOTE.G4, dur:2, vel:0.5},
+      {step:8,  freq:NOTE.B4, dur:2, vel:0.45},
+      {step:8,  freq:NOTE.D5, dur:2, vel:0.4},
+      // E minor: E4 + G4 + B4
+      {step:12, freq:NOTE.E4, dur:2, vel:0.45},
+      {step:12, freq:NOTE.G4, dur:2, vel:0.4},
+      {step:12, freq:NOTE.B4, dur:2, vel:0.4},
+      {step:16, freq:NOTE.G4, dur:3, vel:0.5},
+      {step:16, freq:NOTE.B4, dur:3, vel:0.45},
+      {step:16, freq:NOTE.D5, dur:3, vel:0.4},
+      // C major: C4 + E4 + G4
+      {step:24, freq:NOTE.C4, dur:2, vel:0.45},
+      {step:24, freq:NOTE.E4, dur:2, vel:0.4},
+      {step:24, freq:NOTE.G4, dur:2, vel:0.4},
+      // D major: D4 + F#... use D4+A4
+      {step:28, freq:NOTE.D4, dur:3, vel:0.5},
+      {step:28, freq:NOTE.A4, dur:3, vel:0.45},
+    ],
+    svg: () => `<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+      <!-- fur spikes on sides -->
+      <polygon points="8,30 2,18 16,28" fill="#166a36"/>
+      <polygon points="6,44 0,34 14,40" fill="#1a7a3e"/>
+      <polygon points="72,30 78,18 64,28" fill="#166a36"/>
+      <polygon points="74,44 80,34 66,40" fill="#1a7a3e"/>
+      <!-- body -->
+      <ellipse cx="40" cy="52" rx="26" ry="22" fill="#1E8449"/>
+      <!-- head -->
+      <circle cx="40" cy="30" r="20" fill="#1E8449"/>
+      <!-- horn -->
+      <polygon points="40,4 35,22 45,22" fill="#a8e063"/>
+      <polygon points="40,8 37,20 43,20" fill="#c5f08a"/>
+      <!-- fur top -->
+      <polygon points="22,20 16,8 28,18" fill="#1a7a3e"/>
+      <polygon points="58,20 64,8 52,18" fill="#1a7a3e"/>
+      <!-- eyes -->
+      <circle cx="33" cy="28" r="6" fill="#fff"/>
+      <circle cx="47" cy="28" r="6" fill="#fff"/>
+      <circle cx="33" cy="29" r="4" fill="#0a2a14"/>
+      <circle cx="47" cy="29" r="4" fill="#0a2a14"/>
+      <circle cx="34" cy="27" r="1.5" fill="#fff"/>
+      <circle cx="48" cy="27" r="1.5" fill="#fff"/>
+      <!-- smile -->
+      <path d="M34 38 Q40 44 46 38" stroke="#0d4a22" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      <!-- arms -->
+      <ellipse cx="15" cy="54" rx="9" ry="6" fill="#166a36" transform="rotate(20 15 54)"/>
+      <ellipse cx="65" cy="54" rx="9" ry="6" fill="#166a36" transform="rotate(-20 65 54)"/>
+      <!-- feet -->
+      <ellipse cx="28" cy="74" rx="10" ry="6" fill="#166a36"/>
+      <ellipse cx="52" cy="74" rx="10" ry="6" fill="#166a36"/>
+    </svg>`
+  },
+
+  // ── DANDIDOO (flute melody) ──────────────────────────────
+  {
+    id: 'dandidoo', name: 'Dandidoo', cost: 360, coinRate: 3.5,
+    color: '#E91E63', glowColor: '#ff66aa',
+    instrument: 'flute',
+    sequence: [
+      {step:1,  freq:NOTE.D6, dur:1, vel:0.45},
+      {step:3,  freq:NOTE.G5, dur:1, vel:0.4},
+      {step:5,  freq:NOTE.A5, dur:1, vel:0.45},
+      {step:7,  freq:NOTE.B5, dur:1, vel:0.5},
+      {step:9,  freq:NOTE.D6, dur:2, vel:0.5},
+      {step:13, freq:NOTE.G5, dur:1, vel:0.4},
+      {step:15, freq:NOTE.E5, dur:1, vel:0.4},
+      {step:17, freq:NOTE.G5, dur:1, vel:0.45},
+      {step:19, freq:NOTE.A5, dur:1, vel:0.5},
+      {step:21, freq:NOTE.B5, dur:2, vel:0.5},
+      {step:25, freq:NOTE.D6, dur:1, vel:0.5},
+      {step:27, freq:NOTE.B5, dur:1, vel:0.45},
+      {step:29, freq:NOTE.G5, dur:2, vel:0.5},
+    ],
+    svg: () => `<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+      <!-- flowing hair -->
+      <ellipse cx="40" cy="18" rx="22" ry="16" fill="#ad1457"/>
+      <path d="M18 18 Q8 36 10 56" stroke="#c2185b" stroke-width="8" fill="none" stroke-linecap="round"/>
+      <path d="M62 18 Q72 36 70 56" stroke="#c2185b" stroke-width="8" fill="none" stroke-linecap="round"/>
+      <path d="M14 24 Q4 44 8 64" stroke="#e91e63" stroke-width="5" fill="none" stroke-linecap="round"/>
+      <path d="M66 24 Q76 44 72 64" stroke="#e91e63" stroke-width="5" fill="none" stroke-linecap="round"/>
+      <!-- body -->
+      <ellipse cx="40" cy="54" rx="20" ry="22" fill="#E91E63"/>
+      <!-- dress ruffles -->
+      <ellipse cx="40" cy="70" rx="24" ry="8" fill="#c2185b"/>
+      <ellipse cx="40" cy="66" rx="20" ry="6" fill="#e91e63"/>
+      <!-- head -->
+      <circle cx="40" cy="28" r="18" fill="#E91E63"/>
+      <!-- face highlights -->
+      <circle cx="33" cy="28" r="4" fill="rgba(255,255,255,0.15)"/>
+      <!-- eyes -->
+      <ellipse cx="33" cy="25" rx="5" ry="6" fill="#fff"/>
+      <ellipse cx="47" cy="25" rx="5" ry="6" fill="#fff"/>
+      <circle cx="33" cy="26" r="3.5" fill="#3a0020"/>
+      <circle cx="47" cy="26" r="3.5" fill="#3a0020"/>
+      <circle cx="34" cy="24" r="1.2" fill="#fff"/>
+      <circle cx="48" cy="24" r="1.2" fill="#fff"/>
+      <!-- eyelashes -->
+      <line x1="29" y1="19" x2="30" y2="21" stroke="#3a0020" stroke-width="1.2"/>
+      <line x1="33" y1="18" x2="33" y2="20" stroke="#3a0020" stroke-width="1.2"/>
+      <line x1="37" y1="19" x2="36" y2="21" stroke="#3a0020" stroke-width="1.2"/>
+      <!-- smile -->
+      <path d="M34 35 Q40 41 46 35" stroke="#7a0030" stroke-width="2" fill="#ffb3c6" stroke-linecap="round"/>
+      <!-- cheeks -->
+      <circle cx="27" cy="32" r="5" fill="rgba(255,100,150,0.3)"/>
+      <circle cx="53" cy="32" r="5" fill="rgba(255,100,150,0.3)"/>
+    </svg>`
+  },
+
+  // ── BOWGART (cello/deep) ─────────────────────────────────
+  {
+    id: 'bowgart', name: 'Bowgart', cost: 500, coinRate: 4,
+    color: '#1A237E', glowColor: '#5577ff',
+    instrument: 'cello',
+    sequence: [
+      {step:0,  freq:NOTE.G2, dur:15, vel:0.55},
+      {step:16, freq:NOTE.D3, dur:7,  vel:0.5},
+      {step:24, freq:NOTE.E3, dur:3,  vel:0.45},
+      {step:28, freq:NOTE.D3, dur:3,  vel:0.5},
+    ],
+    svg: () => `<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+      <!-- wide arms spread -->
+      <ellipse cx="8"  cy="38" rx="12" ry="7" fill="#1565C0" transform="rotate(-15 8 38)"/>
+      <ellipse cx="72" cy="38" rx="12" ry="7" fill="#1565C0" transform="rotate(15 72 38)"/>
+      <!-- hands/claws -->
+      <circle cx="3"  cy="34" r="6" fill="#1A237E"/>
+      <circle cx="77" cy="34" r="6" fill="#1A237E"/>
+      <!-- body -->
+      <ellipse cx="40" cy="52" rx="26" ry="24" fill="#1A237E"/>
+      <!-- chest pattern -->
+      <ellipse cx="40" cy="52" rx="14" ry="16" fill="#0d47a1" opacity="0.6"/>
+      <!-- head -->
+      <ellipse cx="40" cy="28" rx="22" ry="20" fill="#1A237E"/>
+      <!-- brow ridge -->
+      <path d="M18 22 Q40 14 62 22" stroke="#0d47a1" stroke-width="5" fill="none"/>
+      <!-- deep set eyes -->
+      <ellipse cx="30" cy="28" rx="7" ry="8" fill="#0d2a5e"/>
+      <ellipse cx="50" cy="28" rx="7" ry="8" fill="#0d2a5e"/>
+      <circle cx="30" cy="28" r="5" fill="#fff"/>
+      <circle cx="50" cy="28" r="5" fill="#fff"/>
+      <circle cx="30" cy="29" r="3.5" fill="#000820"/>
+      <circle cx="50" cy="29" r="3.5" fill="#000820"/>
+      <circle cx="31" cy="27" r="1.5" fill="#5577ff"/>
+      <circle cx="51" cy="27" r="1.5" fill="#5577ff"/>
+      <!-- nose -->
+      <ellipse cx="40" cy="36" rx="4" ry="3" fill="#0d2a5e"/>
+      <!-- mouth -->
+      <path d="M30 42 Q40 46 50 42" stroke="#0d2a5e" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <!-- feet -->
+      <ellipse cx="26" cy="77" rx="11" ry="5" fill="#0d2a5e"/>
+      <ellipse cx="54" cy="77" rx="11" ry="5" fill="#0d2a5e"/>
+    </svg>`
+  },
+];
+
+// ═══════════════════════════════════════════════════════════
+//  GAME STATE
+// ═══════════════════════════════════════════════════════════
+let audioCtx = null;
+let masterGain = null;
+let muted = false;
+
+let coins = 30;
+let coinAccum = 0;
+let lastCoinTime = performance.now();
+
+const unlockedIds = new Set(['noggin']); // noggin is free starter
+const scheduledNotes = new Map(); // id -> next schedule time
+
+// Scheduler state
+let loopStartTime = 0;   // audioCtx time when loop step 0 started
+let schedulerTimer = null;
+const LOOKAHEAD = 0.12;  // seconds ahead to schedule
+const SCHEDULE_INTERVAL = 50; // ms
+
+// Which slots have which monster
+const slotMonsters = new Array(8).fill(null);
+
+// Beat tracking for animation
+let currentAnimStep = 0;
+let animTimer = null;
+
+// ═══════════════════════════════════════════════════════════
+//  AUDIO SYNTHESIS
+// ═══════════════════════════════════════════════════════════
+function playDrum(type, time) {
+  if (muted) return;
+  const st = stepTime();
+  if (type === 'kick') {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain); gain.connect(masterGain);
+    osc.frequency.setValueAtTime(150, time);
+    osc.frequency.exponentialRampToValueAtTime(40, time + 0.08);
+    gain.gain.setValueAtTime(0.9, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.22);
+    osc.start(time); osc.stop(time + 0.25);
+  } else if (type === 'snare') {
+    // noise burst
+    const bufLen = audioCtx.sampleRate * 0.18;
+    const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufLen; i++) data[i] = Math.random() * 2 - 1;
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf;
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'highpass'; filter.frequency.value = 1000;
+    const gain = audioCtx.createGain();
+    src.connect(filter); filter.connect(gain); gain.connect(masterGain);
+    gain.gain.setValueAtTime(0.5, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.18);
+    src.start(time); src.stop(time + 0.2);
+    // tonal body
+    const osc = audioCtx.createOscillator();
+    const g2 = audioCtx.createGain();
+    osc.connect(g2); g2.connect(masterGain);
+    osc.frequency.setValueAtTime(200, time);
+    g2.gain.setValueAtTime(0.25, time);
+    g2.gain.exponentialRampToValueAtTime(0.001, time + 0.12);
+    osc.start(time); osc.stop(time + 0.14);
+  } else if (type === 'hat') {
+    const bufLen = audioCtx.sampleRate * 0.05;
+    const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufLen; i++) data[i] = Math.random() * 2 - 1;
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf;
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'highpass'; filter.frequency.value = 7000;
+    const gain = audioCtx.createGain();
+    src.connect(filter); filter.connect(gain); gain.connect(masterGain);
+    gain.gain.setValueAtTime(0.18, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
+    src.start(time); src.stop(time + 0.07);
+  }
+}
+
+function playTone(instrument, freq, dur, vel, time) {
+  if (muted) return;
+  const st = stepTime();
+  const durSec = dur * st * 0.9;
+
+  if (instrument === 'hum') {
+    // Mammoth hum: pure sine with vibrato
+    const osc = audioCtx.createOscillator();
+    const vib = audioCtx.createOscillator();
+    const vibGain = audioCtx.createGain();
+    const gain = audioCtx.createGain();
+    vib.frequency.value = 5.5;
+    vibGain.gain.value = 2.5;
+    vib.connect(vibGain); vibGain.connect(osc.frequency);
+    osc.type = 'sine'; osc.frequency.value = freq;
+    osc.connect(gain); gain.connect(masterGain);
+    gain.gain.setValueAtTime(0, time);
+    gain.gain.linearRampToValueAtTime(vel * 0.9, time + 0.08);
+    gain.gain.setValueAtTime(vel * 0.9, time + durSec - 0.12);
+    gain.gain.linearRampToValueAtTime(0, time + durSec);
+    osc.start(time); osc.stop(time + durSec + 0.05);
+    vib.start(time); vib.stop(time + durSec + 0.05);
+
+  } else if (instrument === 'pluck') {
+    // Karplus-Strong-ish pluck: filtered noise decay
+    const bufLen = Math.ceil(audioCtx.sampleRate / freq);
+    const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufLen; i++) data[i] = Math.random() * 2 - 1;
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf; src.loop = true;
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass'; filter.frequency.value = freq * 6;
+    const gain = audioCtx.createGain();
+    src.connect(filter); filter.connect(gain); gain.connect(masterGain);
+    gain.gain.setValueAtTime(vel * 0.75, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + durSec * 1.5 + 0.1);
+    src.start(time); src.stop(time + durSec * 1.5 + 0.15);
+
+  } else if (instrument === 'sine') {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine'; osc.frequency.value = freq;
+    osc.connect(gain); gain.connect(masterGain);
+    gain.gain.setValueAtTime(0, time);
+    gain.gain.linearRampToValueAtTime(vel * 0.5, time + 0.02);
+    gain.gain.setValueAtTime(vel * 0.5, time + durSec - 0.05);
+    gain.gain.linearRampToValueAtTime(0, time + durSec);
+    osc.start(time); osc.stop(time + durSec + 0.02);
+
+  } else if (instrument === 'triangle') {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle'; osc.frequency.value = freq;
+    osc.connect(gain); gain.connect(masterGain);
+    gain.gain.setValueAtTime(0, time);
+    gain.gain.linearRampToValueAtTime(vel * 0.55, time + 0.025);
+    gain.gain.setValueAtTime(vel * 0.55, time + durSec - 0.06);
+    gain.gain.linearRampToValueAtTime(0, time + durSec);
+    osc.start(time); osc.stop(time + durSec + 0.03);
+
+  } else if (instrument === 'chord') {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle'; osc.frequency.value = freq;
+    osc.connect(gain); gain.connect(masterGain);
+    gain.gain.setValueAtTime(0, time);
+    gain.gain.linearRampToValueAtTime(vel * 0.4, time + 0.01);
+    gain.gain.exponentialRampToValueAtTime(vel * 0.2, time + durSec * 0.6);
+    gain.gain.linearRampToValueAtTime(0, time + durSec);
+    osc.start(time); osc.stop(time + durSec + 0.02);
+
+  } else if (instrument === 'flute') {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine'; osc.frequency.value = freq;
+    // add a sub-osc for warmth
+    const osc2 = audioCtx.createOscillator();
+    osc2.type = 'triangle'; osc2.frequency.value = freq * 2;
+    const g2 = audioCtx.createGain(); g2.gain.value = 0.15;
+    osc2.connect(g2); g2.connect(masterGain);
+    osc.connect(gain); gain.connect(masterGain);
+    gain.gain.setValueAtTime(0, time);
+    gain.gain.linearRampToValueAtTime(vel * 0.45, time + 0.035);
+    gain.gain.setValueAtTime(vel * 0.45, time + durSec - 0.07);
+    gain.gain.linearRampToValueAtTime(0, time + durSec);
+    osc.start(time); osc.stop(time + durSec + 0.02);
+    osc2.start(time); osc2.stop(time + durSec + 0.02);
+
+  } else if (instrument === 'cello') {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sawtooth'; osc.frequency.value = freq;
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass'; filter.frequency.value = freq * 5;
+    // vibrato
+    const vib = audioCtx.createOscillator();
+    const vibG = audioCtx.createGain();
+    vib.frequency.value = 4; vibG.gain.value = 3;
+    vib.connect(vibG); vibG.connect(osc.frequency);
+    osc.connect(filter); filter.connect(gain); gain.connect(masterGain);
+    gain.gain.setValueAtTime(0, time);
+    gain.gain.linearRampToValueAtTime(vel * 0.5, time + 0.15);
+    gain.gain.setValueAtTime(vel * 0.5, time + durSec - 0.2);
+    gain.gain.linearRampToValueAtTime(0, time + durSec);
+    osc.start(time); osc.stop(time + durSec + 0.05);
+    vib.start(time); vib.stop(time + durSec + 0.05);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SCHEDULER
+// ═══════════════════════════════════════════════════════════
+function scheduleLoop() {
+  const now = audioCtx.currentTime;
+  const st = stepTime();
+  const loopDur = STEPS * st;
+
+  // how many loop iterations have elapsed?
+  const elapsed = now - loopStartTime;
+  const loopNum = Math.floor(elapsed / loopDur);
+  // start of current loop iteration
+  const thisLoopStart = loopStartTime + loopNum * loopDur;
+  // start of next loop iteration
+  const nextLoopStart = thisLoopStart + loopDur;
+
+  // schedule all notes in current + next loop within lookahead window
+  [thisLoopStart, nextLoopStart].forEach(ls => {
+    slotMonsters.forEach(monsterId => {
+      if (!monsterId) return;
+      const monster = MONSTERS.find(m => m.id === monsterId);
+      if (!monster) return;
+
+      monster.sequence.forEach(note => {
+        const noteTime = ls + note.step * st;
+        if (noteTime >= now && noteTime < now + LOOKAHEAD) {
+          if (monster.instrument === 'drum') {
+            playDrum(note.type, noteTime);
+          } else {
+            playTone(monster.instrument, note.freq, note.dur, note.vel, noteTime);
+          }
+        }
+      });
+    });
+  });
+}
+
+function startScheduler() {
+  if (schedulerTimer) return;
+  loopStartTime = audioCtx.currentTime + 0.1;
+  schedulerTimer = setInterval(scheduleLoop, SCHEDULE_INTERVAL);
+  startAnimLoop();
+}
+
+function stopScheduler() {
+  if (schedulerTimer) { clearInterval(schedulerTimer); schedulerTimer = null; }
+  if (animTimer) { clearInterval(animTimer); animTimer = null; }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  ANIMATION (beat sync)
+// ═══════════════════════════════════════════════════════════
+function startAnimLoop() {
+  if (animTimer) return;
+  const st = stepTime() * 1000; // ms
+  const startMs = performance.now();
+  const loopMs = STEPS * st;
+  let lastStep = -1;
+
+  animTimer = setInterval(() => {
+    const now = audioCtx.currentTime;
+    const elapsed = now - loopStartTime;
+    const loopPos = ((elapsed % (STEPS * stepTime())) + STEPS * stepTime()) % (STEPS * stepTime());
+    const step = Math.floor(loopPos / stepTime()) % STEPS;
+
+    if (step === lastStep) return;
+    lastStep = step;
+    currentAnimStep = step;
+
+    // find which monsters should animate this step
+    slotMonsters.forEach((mId, slotIdx) => {
+      if (!mId) return;
+      const monster = MONSTERS.find(m => m.id === mId);
+      if (!monster) return;
+      const fires = monster.sequence.some(n => n.step === step);
+      if (fires) {
+        animateMonsterId(mId, slotIdx);
+        spawnNote(slotIdx);
+      }
+    });
+  }, Math.max(20, st / 2));
+}
+
+function animateMonsterId(mId, slotIdx) {
+  const el = document.querySelector(`[data-slot="${slotIdx}"] .monster-body`);
+  if (!el) return;
+  const monster = MONSTERS.find(m => m.id === mId);
+  el.style.setProperty('--glow-color', monster ? monster.glowColor : '#7fff7f');
+  el.classList.add('beat', 'glow');
+  setTimeout(() => el.classList.remove('beat', 'glow'), 140);
+}
+
+const NOTES_EMOJI = ['♩','♪','♫','♬','🎵','🎶'];
+function spawnNote(slotIdx) {
+  const slot = document.querySelector(`[data-slot="${slotIdx}"]`);
+  if (!slot) return;
+  const note = document.createElement('div');
+  note.className = 'note-particle';
+  note.textContent = NOTES_EMOJI[Math.floor(Math.random() * NOTES_EMOJI.length)];
+  note.style.left = (30 + Math.random() * 50) + 'px';
+  note.style.top = '10px';
+  note.style.color = `hsl(${Math.random()*360},100%,75%)`;
+  slot.appendChild(note);
+  setTimeout(() => note.remove(), 1300);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  COIN SYSTEM
+// ═══════════════════════════════════════════════════════════
+function tickCoins() {
+  const now = performance.now();
+  const dt = (now - lastCoinTime) / 1000;
+  lastCoinTime = now;
+
+  let rate = 0;
+  slotMonsters.forEach(mId => {
+    if (!mId) return;
+    const m = MONSTERS.find(x => x.id === mId);
+    if (m) rate += m.coinRate;
+  });
+  coinAccum += rate * dt;
+
+  if (coinAccum >= 1) {
+    coins += Math.floor(coinAccum);
+    coinAccum -= Math.floor(coinAccum);
+    updateCoinDisplay();
+  }
+}
+
+function updateCoinDisplay() {
+  document.getElementById('coin-count').textContent = Math.floor(coins);
+  // update shop card affordability
+  document.querySelectorAll('.shop-card').forEach(card => {
+    const id = card.dataset.id;
+    if (unlockedIds.has(id)) return;
+    const m = MONSTERS.find(x => x.id === id);
+    if (!m) return;
+    if (coins >= m.cost) card.classList.remove('locked');
+    else card.classList.add('locked');
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  UI BUILDING
+// ═══════════════════════════════════════════════════════════
+function buildIsland() {
+  const island = document.getElementById('island');
+  island.innerHTML = '';
+  for (let i = 0; i < 8; i++) {
+    const mId = slotMonsters[i];
+    const slot = document.createElement('div');
+    slot.className = 'monster-slot' + (mId ? '' : ' empty');
+    slot.dataset.slot = i;
+
+    if (mId) {
+      const monster = MONSTERS.find(m => m.id === mId);
+      slot.innerHTML = `
+        <div class="monster-body" style="width:80px;height:80px">
+          ${monster.svg()}
+        </div>
+        <div class="monster-label">${monster.name}</div>`;
+    } else {
+      slot.innerHTML = `
+        <div class="monster-body" style="width:80px;height:80px;display:flex;align-items:center;justify-content:center;font-size:2rem;color:#aaa">+</div>
+        <div class="monster-label">Empty</div>`;
+      slot.addEventListener('click', () => showShopHint());
+    }
+    island.appendChild(slot);
+  }
+}
+
+function buildShop() {
+  const shop = document.getElementById('shop');
+  shop.innerHTML = '<div style="color:#7fc;font-size:0.7rem;writing-mode:vertical-lr;padding:0 4px;opacity:0.7">SHOP</div>';
+
+  MONSTERS.forEach(m => {
+    const owned = slotMonsters.includes(m.id);
+    const locked = !unlockedIds.has(m.id) && coins < m.cost;
+    const card = document.createElement('div');
+    card.className = 'shop-card' + (owned ? ' owned' : (locked ? ' locked' : ''));
+    card.dataset.id = m.id;
+
+    card.innerHTML = `
+      ${owned ? '<div class="card-tag">On Island</div>' : ''}
+      <div class="card-preview">${m.svg()}</div>
+      <div class="card-name">${m.name}</div>
+      ${owned ? '<div class="card-cost" style="color:#888">Placed</div>' :
+                `<div class="card-cost">🪙 ${m.cost === 0 ? 'Free' : m.cost}</div>`}
+      <div class="card-rate">+${m.coinRate}/s</div>`;
+
+    if (!owned) {
+      card.addEventListener('click', () => tryBuyMonster(m.id));
+    }
+    shop.appendChild(card);
+  });
+}
+
+function tryBuyMonster(id) {
+  const m = MONSTERS.find(x => x.id === id);
+  if (!m) return;
+  if (slotMonsters.includes(id)) { showToast(`${m.name} is already on your island!`); return; }
+  if (coins < m.cost) { showToast(`Need 🪙 ${m.cost} coins — keep earning!`); return; }
+
+  // Find first empty slot
+  const emptySlot = slotMonsters.indexOf(null);
+  if (emptySlot === -1) { showToast('Island is full!'); return; }
+
+  coins -= m.cost;
+  unlockedIds.add(id);
+  slotMonsters[emptySlot] = id;
+
+  updateCoinDisplay();
+  buildIsland();
+  buildShop();
+  showToast(`🎵 ${m.name} joins your island!`);
+}
+
+function showShopHint() {
+  showToast('Buy a monster from the shop below!');
+}
+
+let toastTimer = null;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  STARS BACKGROUND
+// ═══════════════════════════════════════════════════════════
+function drawStars() {
+  const canvas = document.getElementById('stars');
+  canvas.width = window.innerWidth;
+  canvas.height = document.getElementById('island-wrap').offsetHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  for (let i = 0; i < 120; i++) {
+    const x = Math.random() * canvas.width;
+    const y = Math.random() * canvas.height * 0.7;
+    const r = Math.random() * 1.5 + 0.3;
+    const a = Math.random() * 0.8 + 0.2;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,255,255,${a})`;
+    ctx.fill();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════
+function initAudio() {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = 0.72;
+  // slight reverb via convolver would be nice but keep it simple
+  masterGain.connect(audioCtx.destination);
+}
+
+document.getElementById('start-btn').addEventListener('click', () => {
+  document.getElementById('start-overlay').style.display = 'none';
+  initAudio();
+
+  // Place starter noggin in slot 0
+  slotMonsters[0] = 'noggin';
+
+  buildIsland();
+  buildShop();
+  drawStars();
+
+  startScheduler();
+  setInterval(tickCoins, 100);
+});
+
+document.getElementById('mute-btn').addEventListener('click', () => {
+  muted = !muted;
+  if (masterGain) masterGain.gain.value = muted ? 0 : 0.72;
+  document.getElementById('mute-btn').textContent = muted ? '🔇 Unmute' : '🔊 Mute';
+});
+
+window.addEventListener('resize', drawStars);
+
+// Twinkle stars occasionally
+setInterval(() => {
+  if (document.getElementById('start-overlay').style.display !== 'none') return;
+  drawStars();
+}, 8000);
+</script>
+</body>
+</html>
