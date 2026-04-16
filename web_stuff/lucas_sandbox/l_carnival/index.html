@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Duck Hunt Carnival</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #1a0a00;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    font-family: 'Courier New', monospace;
+    overflow: hidden;
+    cursor: none;
+  }
+
+  #game-wrap {
+    position: relative;
+    width: 900px;
+    height: 560px;
+    border: 6px solid #8b5e3c;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 0 40px #ff990066, inset 0 0 60px #00000099;
+  }
+
+  /* Sky gradient */
+  #game-canvas {
+    display: block;
+    background: linear-gradient(to bottom, #87ceeb 0%, #c9e8f5 60%, #7ec850 60%, #5aab32 100%);
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    top: 0; left: 0;
+  }
+
+  /* Carnival sign */
+  #sign {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #cc2200;
+    color: #ffe066;
+    font-size: 22px;
+    font-weight: bold;
+    padding: 4px 24px;
+    border: 3px solid #ffe066;
+    border-radius: 6px;
+    letter-spacing: 3px;
+    text-shadow: 2px 2px 0 #880000;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  /* HUD */
+  #hud {
+    position: absolute;
+    bottom: 10px;
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding: 0 18px;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  .hud-box {
+    background: #1a0a00cc;
+    border: 2px solid #ffe066;
+    border-radius: 6px;
+    padding: 6px 14px;
+    color: #ffe066;
+    font-size: 18px;
+    font-weight: bold;
+    text-align: center;
+  }
+
+  .hud-label { font-size: 11px; letter-spacing: 2px; color: #ffcc44; }
+
+  /* Ammo pips */
+  #ammo-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    justify-content: center;
+    margin-top: 4px;
+  }
+
+  .bullet-pip {
+    width: 10px;
+    height: 18px;
+    background: #ffe066;
+    border-radius: 3px 3px 1px 1px;
+    transition: background 0.1s;
+  }
+
+  .bullet-pip.spent { background: #554422; }
+
+  /* Overlay screens */
+  .overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #000000cc;
+    z-index: 20;
+    color: #ffe066;
+    text-align: center;
+  }
+
+  .overlay h1 {
+    font-size: 52px;
+    font-weight: bold;
+    text-shadow: 3px 3px 0 #880000;
+    letter-spacing: 4px;
+  }
+
+  .overlay p { font-size: 20px; margin-top: 16px; color: #ffcc88; }
+
+  .overlay .big-score { font-size: 38px; margin-top: 8px; color: #fff; }
+
+  .btn {
+    margin-top: 28px;
+    padding: 12px 40px;
+    font-size: 22px;
+    font-family: inherit;
+    font-weight: bold;
+    background: #cc2200;
+    color: #ffe066;
+    border: 3px solid #ffe066;
+    border-radius: 8px;
+    cursor: pointer;
+    letter-spacing: 2px;
+    text-shadow: 1px 1px 0 #880000;
+  }
+
+  .btn:hover { background: #ff3311; }
+
+  /* Custom cursor — crosshair gun sight */
+  #cursor {
+    position: fixed;
+    pointer-events: none;
+    z-index: 999;
+    width: 48px;
+    height: 48px;
+    transform: translate(-50%, -50%);
+  }
+
+  /* Pop text */
+  .pop {
+    position: absolute;
+    font-size: 22px;
+    font-weight: bold;
+    color: #ffe066;
+    text-shadow: 1px 1px 0 #000;
+    pointer-events: none;
+    animation: popUp 0.7s ease-out forwards;
+    z-index: 15;
+  }
+
+  @keyframes popUp {
+    0%   { opacity: 1; transform: translateY(0) scale(1.2); }
+    100% { opacity: 0; transform: translateY(-50px) scale(0.8); }
+  }
+
+  /* Round title flash */
+  #round-flash {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 44px;
+    font-weight: bold;
+    color: #ffe066;
+    text-shadow: 3px 3px 0 #880000;
+    pointer-events: none;
+    z-index: 18;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+</style>
+</head>
+<body>
+
+<div id="game-wrap">
+  <canvas id="game-canvas"></canvas>
+  <div id="sign">★ DUCK HUNT ★</div>
+
+  <div id="hud">
+    <div class="hud-box">
+      <div class="hud-label">ROUND</div>
+      <div id="round-num">1</div>
+    </div>
+    <div class="hud-box">
+      <div class="hud-label">SCORE</div>
+      <div id="score-val">0</div>
+    </div>
+    <div class="hud-box">
+      <div class="hud-label">AMMO</div>
+      <div id="ammo-row"></div>
+    </div>
+    <div class="hud-box">
+      <div class="hud-label">HITS</div>
+      <div id="hits-val">0 / 0</div>
+    </div>
+  </div>
+
+  <div id="round-flash"></div>
+
+  <!-- Start screen -->
+  <div class="overlay" id="start-screen">
+    <h1>DUCK HUNT</h1>
+    <p>Click the ducks before they escape!</p>
+    <p style="margin-top:8px;font-size:15px;color:#aaa;">Each round gets faster — don't miss too many!</p>
+    <button class="btn" id="start-btn">PLAY</button>
+  </div>
+
+  <!-- Game over screen -->
+  <div class="overlay" id="gameover-screen" style="display:none">
+    <h1>GAME OVER</h1>
+    <p>Final Score</p>
+    <div class="big-score" id="final-score">0</div>
+    <button class="btn" id="restart-btn">PLAY AGAIN</button>
+  </div>
+</div>
+
+<!-- SVG crosshair cursor -->
+<svg id="cursor" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="24" cy="24" r="11" stroke="#cc2200" stroke-width="2.5"/>
+  <circle cx="24" cy="24" r="3"  fill="#cc2200"/>
+  <!-- lines -->
+  <line x1="24" y1="2"  x2="24" y2="12" stroke="#cc2200" stroke-width="2"/>
+  <line x1="24" y1="36" x2="24" y2="46" stroke="#cc2200" stroke-width="2"/>
+  <line x1="2"  y1="24" x2="12" y2="24" stroke="#cc2200" stroke-width="2"/>
+  <line x1="36" y1="24" x2="46" y2="24" stroke="#cc2200" stroke-width="2"/>
+</svg>
+
+<script>
+// ─── canvas setup ────────────────────────────────────────────────────────────
+const canvas  = document.getElementById('game-canvas');
+const ctx     = canvas.getContext('2d');
+const W = canvas.width  = 900;
+const H = canvas.height = 560;
+
+// ─── game state ──────────────────────────────────────────────────────────────
+const DUCKS_PER_ROUND = 10;
+const MAX_AMMO        = 3;
+const MAX_MISSES      = 5;   // allowed escapes before game over
+
+let state      = 'start';   // start | playing | gameover
+let score      = 0;
+let round      = 1;
+let ammo       = MAX_AMMO;
+let ducks      = [];
+let feathers   = [];
+let flyingHats = [];
+let shots      = [];        // muzzle-flash sparks
+let totalHits  = 0;
+let totalDucks = 0;         // ducks presented this round
+let misses     = 0;         // ducks that escaped
+let spawnTimer = 0;
+let roundEnding = false;    // prevents setTimeout(nextRound) firing every frame
+let maxOnScreen= 2;
+
+// ─── cursor tracking ─────────────────────────────────────────────────────────
+const cursorEl = document.getElementById('cursor');
+let mx = -100, my = -100;
+document.addEventListener('mousemove', e => {
+  mx = e.clientX; my = e.clientY;
+  cursorEl.style.left = mx + 'px';
+  cursorEl.style.top  = my + 'px';
+});
+
+// ─── duck sprite drawing ─────────────────────────────────────────────────────
+// Each duck: { x, y, dir, speed, flap, flapTimer, hit, hitTimer, row }
+// row 0–2 → different track heights
+
+const DUCK_W = 52, DUCK_H = 36;
+const TRACK_Y = [120, 200, 295];  // three lanes
+
+function drawDuck(d) {
+  const x = d.x, y = d.y;
+  const flip = d.dir < 0;  // facing left?
+
+  ctx.save();
+  if (flip) {
+    ctx.scale(-1, 1);
+    ctx.translate(-x * 2 - DUCK_W, 0);
+  }
+
+  // body colours by row
+  const bodyCol  = ['#d4820a','#217a00','#7f2b00'][d.row];
+  const wingCol  = ['#e8a030','#2ea000','#b04010'][d.row];
+  const headCol  = ['#217a00','#1060c0','#d4820a'][d.row];
+
+  // wing flap offset
+  const flapOff = (d.flapPhase < 0.5) ? -5 : 3;
+
+  // shadow
+  ctx.globalAlpha = 0.2;
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.ellipse(x + DUCK_W/2, y + DUCK_H + 4, DUCK_W/2, 6, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // wing (behind body when up)
+  ctx.fillStyle = wingCol;
+  ctx.beginPath();
+  ctx.ellipse(x + 22, y + 18 + flapOff, 20, 10, -0.3, 0, Math.PI*2);
+  ctx.fill();
+
+  // body
+  ctx.fillStyle = bodyCol;
+  ctx.beginPath();
+  ctx.ellipse(x + DUCK_W/2, y + 22, 24, 14, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // tail feathers
+  ctx.fillStyle = wingCol;
+  ctx.beginPath();
+  ctx.moveTo(x + 4, y + 18);
+  ctx.lineTo(x - 8, y + 14);
+  ctx.lineTo(x - 4, y + 24);
+  ctx.closePath();
+  ctx.fill();
+
+  // neck
+  ctx.fillStyle = bodyCol;
+  ctx.beginPath();
+  ctx.ellipse(x + 38, y + 14, 9, 12, 0.2, 0, Math.PI*2);
+  ctx.fill();
+
+  // head
+  ctx.fillStyle = headCol;
+  ctx.beginPath();
+  ctx.arc(x + 42, y + 8, 11, 0, Math.PI*2);
+  ctx.fill();
+
+  // eye
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(x + 46, y + 6, 3.5, 0, Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle = '#111';
+  ctx.beginPath();
+  ctx.arc(x + 47, y + 6, 2, 0, Math.PI*2);
+  ctx.fill();
+
+  // bill
+  ctx.fillStyle = '#e8c030';
+  ctx.beginPath();
+  ctx.moveTo(x + 52, y + 10);
+  ctx.lineTo(x + 64, y + 12);
+  ctx.lineTo(x + 52, y + 16);
+  ctx.closePath();
+  ctx.fill();
+
+  // top hat (optional)
+  if (d.hasHat) {
+    const hx = x + 42, hy = y - 3;   // centred on head
+    // brim
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    ctx.ellipse(hx, hy, 14, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // crown
+    ctx.fillRect(hx - 9, hy - 18, 18, 18);
+    // hat band
+    ctx.fillStyle = '#cc2200';
+    ctx.fillRect(hx - 9, hy - 5, 18, 4);
+  }
+
+  ctx.restore();
+
+  // hit flash
+  if (d.hit) {
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.ellipse(x + DUCK_W/2, y + 18, 30, 20, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ─── ufo sprite drawing ──────────────────────────────────────────────────────
+const UFO_W = 60, UFO_H = 28;
+
+function drawUFO(d) {
+  const cx = d.x + UFO_W / 2, cy = d.y + UFO_H / 2;
+
+  // glow
+  ctx.save();
+  ctx.shadowColor = '#00ffcc';
+  ctx.shadowBlur  = 18;
+
+  // saucer body
+  ctx.fillStyle = '#aaddee';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + 6, UFO_W / 2, 10, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // dome
+  ctx.fillStyle = '#ddf8ff';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy - 2, 18, 14, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // dome tint
+  ctx.fillStyle = '#00ffcc44';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy - 2, 18, 14, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // underside lights — cycle colour
+  const lightCols = ['#ff4444','#ffee00','#44ff88','#44aaff'];
+  for (let i = 0; i < 4; i++) {
+    ctx.fillStyle = lightCols[(i + Math.floor(Date.now() / 120)) % 4];
+    ctx.beginPath();
+    ctx.arc(cx - 18 + i * 12, cy + 13, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+
+  // hit flash
+  if (d.hit) {
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + 6, UFO_W / 2, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ─── feather particle ─────────────────────────────────────────────────────────
+function spawnFeathers(x, y) {
+  for (let i = 0; i < 12; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spd   = 1.5 + Math.random() * 3;
+    feathers.push({
+      x, y,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd - 2,
+      life: 1,
+      decay: 0.02 + Math.random() * 0.015,
+      size: 4 + Math.random() * 6,
+      col: ['#fff','#e8c030','#d4820a','#aaa'][Math.floor(Math.random()*4)]
+    });
+  }
+}
+
+function updateFeathers() {
+  feathers = feathers.filter(f => f.life > 0);
+  feathers.forEach(f => {
+    f.x += f.vx;
+    f.y += f.vy;
+    f.vy += 0.12;
+    f.life -= f.decay;
+    ctx.globalAlpha = f.life;
+    ctx.fillStyle = f.col;
+    ctx.save();
+    ctx.translate(f.x, f.y);
+    ctx.rotate(f.vx * 0.5);
+    ctx.fillRect(-f.size/2, -2, f.size, 4);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  });
+}
+
+// ─── flying hat ──────────────────────────────────────────────────────────────
+function spawnFlyingHat(x, y) {
+  const angle = -(Math.PI * 0.25 + Math.random() * Math.PI * 0.5); // upward arc
+  const spd   = 4 + Math.random() * 4;
+  flyingHats.push({
+    x, y,
+    vx: Math.cos(angle) * spd * (Math.random() < 0.5 ? 1 : -1),
+    vy: Math.sin(angle) * spd,
+    rot: 0,
+    rotSpd: (Math.random() - 0.5) * 0.3,
+    alpha: 1
+  });
+}
+
+function updateFlyingHats() {
+  flyingHats = flyingHats.filter(h => h.alpha > 0);
+  flyingHats.forEach(h => {
+    h.x   += h.vx;
+    h.y   += h.vy;
+    h.vy  += 0.22;       // gravity
+    h.rot += h.rotSpd;
+    if (h.y > H + 20) h.alpha = 0;  // gone off screen
+
+    ctx.save();
+    ctx.globalAlpha = h.alpha;
+    ctx.translate(h.x, h.y);
+    ctx.rotate(h.rot);
+    // brim
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 14, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // crown
+    ctx.fillRect(-9, -18, 18, 18);
+    // band
+    ctx.fillStyle = '#cc2200';
+    ctx.fillRect(-9, -5, 18, 4);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  });
+}
+
+// ─── shot sparks ─────────────────────────────────────────────────────────────
+function spawnShot(x, y) {
+  for (let i = 0; i < 8; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spd   = 2 + Math.random() * 4;
+    shots.push({
+      x, y,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      life: 1, decay: 0.1
+    });
+  }
+}
+
+function updateShots() {
+  shots = shots.filter(s => s.life > 0);
+  shots.forEach(s => {
+    s.x += s.vx; s.y += s.vy;
+    s.life -= s.decay;
+    ctx.globalAlpha = s.life;
+    ctx.fillStyle = '#ffee00';
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, 3, 0, Math.PI*2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  });
+}
+
+// ─── background ──────────────────────────────────────────────────────────────
+function drawBG() {
+  // sky
+  const sky = ctx.createLinearGradient(0, 0, 0, H*0.6);
+  sky.addColorStop(0, '#87ceeb');
+  sky.addColorStop(1, '#c9e8f5');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, H*0.6);
+
+  // clouds
+  drawCloud(100, 60, 80);
+  drawCloud(420, 40, 110);
+  drawCloud(720, 75, 70);
+
+  // grass
+  const grass = ctx.createLinearGradient(0, H*0.6, 0, H);
+  grass.addColorStop(0, '#7ec850');
+  grass.addColorStop(1, '#4a8e28');
+  ctx.fillStyle = grass;
+  ctx.fillRect(0, H*0.6, W, H*0.4);
+
+  // lane markers — dotted lines
+  ctx.setLineDash([14, 10]);
+  ctx.strokeStyle = '#ffffff44';
+  ctx.lineWidth = 1.5;
+  TRACK_Y.forEach(ty => {
+    ctx.beginPath();
+    ctx.moveTo(0, ty + DUCK_H + 10);
+    ctx.lineTo(W, ty + DUCK_H + 10);
+    ctx.stroke();
+  });
+  ctx.setLineDash([]);
+
+  // carnival booth frame
+  ctx.strokeStyle = '#8b5e3c';
+  ctx.lineWidth = 5;
+  ctx.strokeRect(2, 2, W-4, H-4);
+
+  // bunting
+  const bunting = ['#cc2200','#ffe066','#1a7acc','#22aa44'];
+  for (let i = 0; i < 18; i++) {
+    const x1 = i * 52;
+    const x2 = (i+1) * 52;
+    ctx.beginPath();
+    ctx.moveTo(x1, 0);
+    ctx.lineTo(x2, 0);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x1 + 2, 0);
+    ctx.lineTo(x1 + 26, 22);
+    ctx.lineTo(x1 + 50, 0);
+    ctx.closePath();
+    ctx.fillStyle = bunting[i % 4];
+    ctx.fill();
+  }
+}
+
+function drawCloud(cx, cy, r) {
+  ctx.fillStyle = '#ffffffcc';
+  [[0,0,r],[r*0.6,-r*0.3,r*0.65],[r*0.6,r*0.25,r*0.55],[-r*0.6,r*0.15,r*0.55]].forEach(([dx,dy,rad]) => {
+    ctx.beginPath();
+    ctx.arc(cx+dx, cy+dy, rad, 0, Math.PI*2);
+    ctx.fill();
+  });
+}
+
+// ─── spawning ducks ───────────────────────────────────────────────────────────
+function spawnDuck() {
+  if (totalDucks >= DUCKS_PER_ROUND) return;
+  if (ducks.filter(d => !d.hit).length >= maxOnScreen) return;
+  totalDucks++;
+
+  const isUFO = Math.random() < 1/50;
+  const row   = Math.floor(Math.random() * 3);
+  const dir   = Math.random() < 0.5 ? 1 : -1;
+  const baseSpd = 1.8 + round * 0.35;
+  const spd   = (baseSpd + Math.random() * 1.2) * (isUFO ? 1.6 : 1);
+  const w     = isUFO ? UFO_W : DUCK_W;
+  const startX = dir > 0 ? -w - 10 : W + 10;
+
+  ducks.push({
+    x: startX,
+    y: TRACK_Y[row],
+    dir, spd, row,
+    isUFO,
+    hasHat: !isUFO && Math.random() < 1/10,
+    flapPhase: Math.random(),
+    hit: false,
+    hitTimer: 0,
+    dead: false
+  });
+}
+
+// ─── HUD update ──────────────────────────────────────────────────────────────
+function buildAmmo() {
+  const row = document.getElementById('ammo-row');
+  row.innerHTML = '';
+  for (let i = 0; i < MAX_AMMO; i++) {
+    const pip = document.createElement('div');
+    pip.className = 'bullet-pip' + (i >= ammo ? ' spent' : '');
+    row.appendChild(pip);
+  }
+}
+
+function updateHUD() {
+  document.getElementById('score-val').textContent = score;
+  document.getElementById('round-num').textContent = round;
+  document.getElementById('hits-val').textContent  = totalHits + ' / ' + DUCKS_PER_ROUND;
+  buildAmmo();
+}
+
+// ─── pop text ─────────────────────────────────────────────────────────────────
+function spawnPop(x, y, text) {
+  const el = document.createElement('div');
+  el.className = 'pop';
+  el.textContent = text;
+  el.style.left = x + 'px';
+  el.style.top  = y + 'px';
+  document.getElementById('game-wrap').appendChild(el);
+  el.addEventListener('animationend', () => el.remove());
+}
+
+// ─── round flash ─────────────────────────────────────────────────────────────
+function showRoundFlash(txt) {
+  const el = document.getElementById('round-flash');
+  el.textContent = txt;
+  el.style.opacity = 1;
+  setTimeout(() => { el.style.opacity = 0; }, 1400);
+}
+
+// ─── canvas-relative mouse coords ────────────────────────────────────────────
+function canvasMouse() {
+  const rect = canvas.getBoundingClientRect();
+  return { cx: mx - rect.left, cy: my - rect.top };
+}
+
+// ─── shooting ────────────────────────────────────────────────────────────────
+function shoot(e) {
+  if (state !== 'playing') return;
+  if (ammo <= 0) return;
+
+  ammo--;
+  const { cx, cy } = canvasMouse();
+  spawnShot(cx, cy);
+
+  // check duck hits (front-to-back)
+  // d.x is always a real screen coordinate; the flip in drawDuck is purely visual.
+  // The duck body+tail spans d.x-12 → d.x+64, vertically d.y-8 → d.y+DUCK_H+8.
+  let hit = false;
+  for (let i = ducks.length - 1; i >= 0; i--) {
+    const d = ducks[i];
+    if (d.hit || d.dead) continue;
+    const hw = d.isUFO ? UFO_W : 76;  // hit width
+    const hh = d.isUFO ? UFO_H : DUCK_H + 16;
+    const hox = d.isUFO ? 0 : -12;   // x offset from d.x
+    if (cx >= d.x + hox && cx <= d.x + hox + hw &&
+        cy >= d.y - 8   && cy <= d.y - 8 + hh) {
+      d.hit = true;
+      d.hitTimer = 28;
+      hit = true;
+      const pts = d.isUFO ? 1000 : 100 + round * 50;
+      score += pts;
+      totalHits++;
+
+      const popX = Math.min(Math.max(d.x, 20), W - 80);
+      spawnPop(popX, d.y - 20, '+' + pts);
+      spawnFeathers(cx, cy);
+      if (d.hasHat) spawnFlyingHat(d.x + 42, d.y - 3);
+      break;
+    }
+  }
+
+  if (!hit) spawnPop(cx - 20, cy - 20, 'MISS!');
+
+  // reload when empty
+  if (ammo <= 0) {
+    setTimeout(() => {
+      ammo = MAX_AMMO;
+      updateHUD();
+    }, 500);
+  }
+
+  updateHUD();
+}
+
+canvas.addEventListener('click', shoot);
+
+// ─── start / restart ─────────────────────────────────────────────────────────
+function startGame() {
+  score = 0; round = 1; ammo = MAX_AMMO;
+  ducks = []; feathers = []; flyingHats = []; shots = [];
+  totalHits = 0; totalDucks = 0; misses = 0;
+  spawnTimer = 0; maxOnScreen = 2; roundEnding = false;
+  document.getElementById('start-screen').style.display   = 'none';
+  document.getElementById('gameover-screen').style.display= 'none';
+  state = 'playing';
+  showRoundFlash('ROUND 1');
+  updateHUD();
+}
+
+function nextRound() {
+  round++;
+  ducks = []; feathers = []; flyingHats = []; shots = [];
+  totalDucks = 0; misses = 0;
+  spawnTimer = 0; roundEnding = false;
+  maxOnScreen = Math.min(2 + Math.floor(round / 3), 5);
+  ammo = MAX_AMMO;
+  showRoundFlash('ROUND ' + round);
+  updateHUD();
+}
+
+function gameOver() {
+  state = 'gameover';
+  document.getElementById('final-score').textContent = score;
+  document.getElementById('gameover-screen').style.display = 'flex';
+}
+
+document.getElementById('start-btn').addEventListener('click', startGame);
+document.getElementById('restart-btn').addEventListener('click', startGame);
+
+// ─── main loop ───────────────────────────────────────────────────────────────
+let last = 0;
+function loop(ts) {
+  const dt = Math.min(ts - last, 50);
+  last = ts;
+
+  ctx.clearRect(0, 0, W, H);
+  drawBG();
+
+  if (state === 'playing') {
+    // spawn
+    spawnTimer += dt;
+    const interval = Math.max(800 - round * 60, 280);
+    if (spawnTimer > interval) {
+      spawnTimer = 0;
+      spawnDuck();
+    }
+
+    // update ducks
+    ducks.forEach(d => {
+      if (d.dead) return;
+
+      if (d.hit) {
+        d.hitTimer--;
+        d.y += 3;           // fall
+        d.flapPhase = 0;    // wings up (dead pose)
+        if (d.hitTimer <= 0) d.dead = true;
+      } else {
+        d.x += d.dir * d.spd * (dt / 16);
+        d.flapPhase = (d.flapPhase + 0.05) % 1;
+
+        // escaped?
+        const ew = d.isUFO ? UFO_W : DUCK_W;
+        if ((d.dir > 0 && d.x > W + 20) || (d.dir < 0 && d.x < -ew - 20)) {
+          d.dead = true;
+          if (!d.isUFO) {
+            misses++;
+            if (misses >= MAX_MISSES) {
+              gameOver();
+              return;
+            }
+          }
+        }
+      }
+    });
+
+    ducks = ducks.filter(d => !d.dead || d.hitTimer > 0);
+
+    // draw ducks / UFOs
+    ducks.forEach(d => d.isUFO ? drawUFO(d) : drawDuck(d));
+
+    // particles
+    updateFeathers();
+    updateFlyingHats();
+    updateShots();
+
+    // draw crosshair on ducks (hover highlight)
+    const { cx, cy } = canvasMouse();
+    ducks.forEach(d => {
+      if (d.hit || d.dead) return;
+      const hw = d.isUFO ? UFO_W : 76;
+      const hh = d.isUFO ? UFO_H : DUCK_H + 16;
+      const hox = d.isUFO ? 0 : -12;
+      if (cx >= d.x + hox && cx <= d.x + hox + hw &&
+          cy >= d.y - 8   && cy <= d.y - 8 + hh) {
+        ctx.strokeStyle = d.isUFO ? '#00ffcc88' : '#ff000088';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(d.x + hox, d.y - 8, hw, hh);
+      }
+    });
+
+    // check round complete
+    if (totalDucks >= DUCKS_PER_ROUND && ducks.length === 0 && !roundEnding) {
+      roundEnding = true;
+      const acc = totalHits / DUCKS_PER_ROUND;
+      if (acc >= 0.8) {
+        score += 500;
+        spawnPop(W/2 - 60, H/2 - 40, 'BONUS +500!');
+      }
+      setTimeout(nextRound, 1200);
+    }
+  }
+
+  requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
