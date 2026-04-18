@@ -1,0 +1,1079 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chess</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0d0d0d;
+    color: #eee;
+    font-family: 'Segoe UI', sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px;
+  }
+
+  h1 {
+    font-size: 2rem;
+    margin-bottom: 10px;
+    color: #e03030;
+    letter-spacing: 3px;
+    text-shadow: 0 0 20px #e0303088;
+  }
+
+  #mode-select { display: flex; gap: 12px; margin-bottom: 16px; }
+
+  .mode-btn {
+    padding: 8px 22px;
+    border: 2px solid #e03030;
+    background: transparent;
+    color: #e03030;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    transition: all 0.2s;
+  }
+  .mode-btn:hover, .mode-btn.active {
+    background: #e03030;
+    color: #0d0d0d;
+    font-weight: bold;
+  }
+
+  #status-bar {
+    font-size: 1.1rem;
+    margin-bottom: 12px;
+    min-height: 1.5em;
+    color: #e03030;
+    text-align: center;
+  }
+
+  #game-area { display: flex; gap: 18px; align-items: flex-start; }
+
+  #board-wrap { display: flex; align-items: center; gap: 10px; }
+
+  #rank-labels { display: flex; flex-direction: column; gap: 0; }
+
+  .rank-label {
+    width: 20px; height: 70px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.85rem; color: #aaa;
+  }
+
+  #board-col { display: flex; flex-direction: column; align-items: center; }
+
+  #board {
+    display: grid;
+    grid-template-columns: repeat(8, 70px);
+    grid-template-rows: repeat(8, 70px);
+    border: 3px solid #e03030;
+    box-shadow: 0 0 30px #e0303066;
+  }
+
+  .sq {
+    width: 70px; height: 70px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 2.8rem;
+    cursor: pointer;
+    position: relative;
+    transition: background 0.1s;
+    user-select: none;
+    overflow: hidden;
+  }
+
+  .sq.light { background: #1e1e1e; }
+  .sq.dark  { background: #8b0000; }
+  .sq.selected   { background: #7fc97f !important; }
+  .sq.hint       { background: #aee8ae !important; }
+  .sq.hint.dark  { background: #7db87d !important; }
+  .sq.last-from  { background: #5a2a2a !important; }
+  .sq.last-to    { background: #7a1a1a !important; }
+  .sq.in-check   { background: #e05252 !important; }
+  .sq.swap-target { outline: 3px dashed #f0c040; outline-offset: -3px; }
+  .sq.alien-zap  { background: #8b00cc !important; } /* adjacent capture target */
+
+  .sq:hover { filter: brightness(1.1); }
+
+  .dot::after {
+    content: '';
+    position: absolute;
+    width: 22px; height: 22px;
+    background: rgba(0,0,0,0.22);
+    border-radius: 50%;
+    pointer-events: none;
+  }
+  .dot-capture::after {
+    width: 64px; height: 64px;
+    background: transparent;
+    border: 6px solid rgba(0,0,0,0.22);
+    border-radius: 50%;
+  }
+
+  /* Custom piece display */
+  .custom-piece-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    line-height: 1;
+  }
+  .color-dot {
+    position: absolute;
+    bottom: 0; right: 0;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    border: 1.5px solid #555;
+  }
+
+  #file-labels {
+    display: grid;
+    grid-template-columns: repeat(8, 70px);
+    margin-top: 4px;
+  }
+  .file-label { text-align: center; font-size: 0.85rem; color: #aaa; }
+
+  #controls { margin-top: 16px; display: flex; gap: 12px; }
+
+  .ctrl-btn {
+    padding: 8px 20px;
+    background: #1a0a0a;
+    border: 1px solid #555;
+    color: #ccc;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+  }
+  .ctrl-btn:hover { border-color: #e03030; color: #e03030; }
+
+  #captured {
+    margin-top: 14px;
+    display: flex; flex-direction: column; gap: 4px;
+    font-size: 1.5rem; align-items: center;
+  }
+  .cap-row { display: flex; gap: 2px; min-height: 1.8rem; }
+  .cap-label { font-size: 0.8rem; color: #888; margin-right: 6px; align-self: center; }
+
+  #difficulty-wrap {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 10px; font-size: 0.9rem; color: #cc8888;
+  }
+  #difficulty {
+    background: #1a0a0a; border: 1px solid #555; color: #eee;
+    padding: 4px 10px; border-radius: 6px; font-size: 0.9rem;
+  }
+
+  /* ── Shop Panel ───────────────────────── */
+  #shop-panel {
+    width: 190px;
+    background: #110808;
+    border: 2px solid #8b0000;
+    border-radius: 10px;
+    padding: 14px 12px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  #shop-panel h3 {
+    color: #e03030; font-size: 1rem; text-align: center;
+    letter-spacing: 1px; border-bottom: 1px solid #8b0000; padding-bottom: 8px;
+  }
+  #shop-hint {
+    font-size: 0.75rem; color: #888; text-align: center; min-height: 2.2em; line-height: 1.4;
+  }
+  .shop-card {
+    background: #1a0a0a; border: 1.5px solid #444; border-radius: 8px;
+    padding: 10px 8px; cursor: pointer; transition: border-color 0.2s, background 0.2s;
+  }
+  .shop-card:hover { border-color: #e03030; background: #2a0e0e; }
+  .shop-card.selected { border-color: #f0c040; background: #2a200a; box-shadow: 0 0 8px #f0c04044; }
+  .shop-card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .shop-card-icon { font-size: 1.8rem; line-height: 1; }
+  .shop-card-name { font-size: 0.9rem; font-weight: bold; color: #ddd; }
+  .shop-card-desc { font-size: 0.72rem; color: #999; line-height: 1.4; }
+  #shop-cancel {
+    display: none; background: #2a0a0a; border: 1px solid #555; color: #aaa;
+    border-radius: 6px; padding: 5px; cursor: pointer; font-size: 0.8rem;
+    text-align: center; transition: border-color 0.2s;
+  }
+  #shop-cancel:hover { border-color: #e03030; color: #e03030; }
+
+  #promo-modal {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    align-items: center; justify-content: center; z-index: 100;
+  }
+  #promo-modal.show { display: flex; }
+  #promo-box {
+    background: #1a0a0a; border: 2px solid #e03030;
+    border-radius: 12px; padding: 24px; text-align: center;
+  }
+  #promo-box h3 { margin-bottom: 16px; color: #e03030; }
+  #promo-pieces { display: flex; gap: 14px; justify-content: center; }
+  .promo-piece {
+    font-size: 3rem; cursor: pointer; padding: 6px 10px;
+    border-radius: 8px; transition: background 0.2s;
+  }
+  .promo-piece:hover { background: #f0c04033; }
+</style>
+</head>
+<body>
+
+<h1>♔ CHESS ♚</h1>
+
+<div id="mode-select">
+  <button class="mode-btn active" id="btn-2p"  onclick="setMode('2p')">2 Players</button>
+  <button class="mode-btn"        id="btn-cpu" onclick="setMode('cpu')">vs CPU</button>
+</div>
+
+<div id="difficulty-wrap" style="display:none">
+  <label for="difficulty">CPU Difficulty:</label>
+  <select id="difficulty" onchange="setDifficulty(this.value)">
+    <option value="1">Easy</option>
+    <option value="2">Medium</option>
+    <option value="3" selected>Hard</option>
+  </select>
+  <span id="cpu-side-label" style="margin-left:8px; color:#f0c040"></span>
+</div>
+
+<div id="status-bar">White's turn</div>
+
+<div id="game-area">
+  <div id="board-wrap">
+    <div id="rank-labels"></div>
+    <div id="board-col">
+      <div id="board"></div>
+      <div id="file-labels">
+        <div class="file-label">a</div><div class="file-label">b</div>
+        <div class="file-label">c</div><div class="file-label">d</div>
+        <div class="file-label">e</div><div class="file-label">f</div>
+        <div class="file-label">g</div><div class="file-label">h</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="shop-panel">
+    <h3>⚗ Piece Shop</h3>
+    <div id="shop-hint">Click a piece below, then swap one of your non-King/Pawn pieces. Costs your turn.</div>
+
+    <div class="shop-card" id="shop-card-F" onclick="selectShopPiece('F')">
+      <div class="shop-card-header">
+        <span class="shop-card-icon">🐸</span>
+        <span class="shop-card-name">The Frog</span>
+      </div>
+      <div class="shop-card-desc">Jumps exactly 2 squares in any direction (including diagonals). Leaps over pieces. Takes by landing.</div>
+    </div>
+
+    <div class="shop-card" id="shop-card-M" onclick="selectShopPiece('M')">
+      <div class="shop-card-header">
+        <span class="shop-card-icon">🧍</span>
+        <span class="shop-card-name">The Man</span>
+      </div>
+      <div class="shop-card-desc">Moves 1 square in any direction. Cannot jump. Takes by landing.</div>
+    </div>
+
+    <div class="shop-card" id="shop-card-A" onclick="selectShopPiece('A')">
+      <div class="shop-card-header">
+        <span class="shop-card-icon">👽</span>
+        <span class="shop-card-name">The Alien</span>
+      </div>
+      <div class="shop-card-desc">Zaps any adjacent enemy piece without moving. Also teleports to any square just vacated by the last move.</div>
+    </div>
+
+    <div class="shop-card" id="shop-card-L" onclick="selectShopPiece('L')">
+      <div class="shop-card-header">
+        <span class="shop-card-icon">🐭</span>
+        <span class="shop-card-name">The Mole</span>
+      </div>
+      <div class="shop-card-desc">Teleports to any empty square. Cannot capture. Acts as a wall, blocking enemy movement.</div>
+    </div>
+
+    <div class="shop-card" id="shop-card-T" onclick="selectShopPiece('T')">
+      <div class="shop-card-header">
+        <span class="shop-card-icon">🤖</span>
+        <span class="shop-card-name">The Robot</span>
+      </div>
+      <div class="shop-card-desc">Slides 1–3 squares in any direction. Blocked by pieces. Takes by landing. A short-range Queen.</div>
+    </div>
+
+    <div id="shop-cancel" onclick="cancelShopSelect()">✕ Cancel</div>
+  </div>
+</div>
+
+<div id="captured">
+  <div class="cap-row"><span class="cap-label">White captured:</span><span id="cap-white"></span></div>
+  <div class="cap-row"><span class="cap-label">Black captured:</span><span id="cap-black"></span></div>
+</div>
+
+<div id="controls">
+  <button class="ctrl-btn" onclick="newGame()">New Game</button>
+  <button class="ctrl-btn" onclick="undoMove()">Undo</button>
+</div>
+
+<div id="promo-modal">
+  <div id="promo-box">
+    <h3>Promote Pawn</h3>
+    <div id="promo-pieces"></div>
+  </div>
+</div>
+
+<script>
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+const UNICODE = {
+  wK:'♔', wQ:'♕', wR:'♖', wB:'♗', wN:'♘', wP:'♙',
+  bK:'♚', bQ:'♛', bR:'♜', bB:'♝', bN:'♞', bP:'♟'
+};
+
+const CUSTOM_EMOJI = { F:'🐸', M:'🧍', A:'👽', L:'🐭', T:'🤖' };
+const CUSTOM_TYPES = new Set(['F','M','A','L','T']);
+
+// ─── State ───────────────────────────────────────────────────────────────────
+
+let board, turn, selected, legalMoves, lastFrom, lastTo;
+let castleRights, enPassantSq, halfmoveClock, fullmove;
+let capturedByWhite, capturedByBlack;
+let history;
+let mode = '2p';
+let cpuDepth = 3;
+let cpuColor = 'b';
+let gameOver = false;
+let promoCallback = null;
+let shopSelectedType = null;
+
+// ─── Init ────────────────────────────────────────────────────────────────────
+
+function newGame() {
+  board = initBoard();
+  turn = 'w';
+  selected = null; legalMoves = [];
+  lastFrom = null; lastTo = null;
+  castleRights = { wK:true, wQ:true, bK:true, bQ:true };
+  enPassantSq = null;
+  halfmoveClock = 0; fullmove = 1;
+  capturedByWhite = []; capturedByBlack = [];
+  history = [];
+  gameOver = false;
+  shopSelectedType = null;
+  render(); renderShop(); updateStatus(); updateCaptures();
+  if (mode === 'cpu' && turn === cpuColor) setTimeout(doCpuMove, 400);
+}
+
+function initBoard() {
+  const b = Array(8).fill(null).map(() => Array(8).fill(null));
+  const back = ['R','N','B','Q','K','B','N','R'];
+  for (let c = 0; c < 8; c++) {
+    b[0][c] = { color:'b', type:back[c] };
+    b[1][c] = { color:'b', type:'P' };
+    b[6][c] = { color:'w', type:'P' };
+    b[7][c] = { color:'w', type:back[c] };
+  }
+  return b;
+}
+
+// ─── Piece Display ───────────────────────────────────────────────────────────
+
+function getPieceHtml(piece) {
+  if (!piece) return '';
+  if (!CUSTOM_TYPES.has(piece.type)) return UNICODE[piece.color + piece.type] || '';
+  const emoji = CUSTOM_EMOJI[piece.type] || '?';
+  const dotBg     = piece.color === 'w' ? '#e8e8e8' : '#111';
+  const dotBorder = piece.color === 'w' ? '#aaa'    : '#666';
+  return `<span class="custom-piece-wrap">${emoji}<span class="color-dot" style="background:${dotBg};border-color:${dotBorder}"></span></span>`;
+}
+
+function getCapDisplayHtml(key) {
+  if (UNICODE[key]) return UNICODE[key];
+  return CUSTOM_EMOJI[key.slice(1)] || '?';
+}
+
+// ─── Rendering ───────────────────────────────────────────────────────────────
+
+function render() {
+  const boardEl = document.getElementById('board');
+  boardEl.innerHTML = '';
+  const rankEl  = document.getElementById('rank-labels');
+  rankEl.innerHTML = '';
+
+  for (let row = 0; row < 8; row++) {
+    const d = document.createElement('div');
+    d.className = 'rank-label';
+    d.textContent = 8 - row;
+    rankEl.appendChild(d);
+  }
+
+  // Build hint sets from legalMoves
+  const movHintSet = new Set(
+    legalMoves.filter(m => !m.alienCapture).map(m => m.to[0]*8 + m.to[1])
+  );
+  const movCapSet = new Set(
+    legalMoves.filter(m => !m.alienCapture && (board[m.to[0]][m.to[1]] || m.ep))
+              .map(m => m.to[0]*8 + m.to[1])
+  );
+  // Alien adjacent-capture targets shown in purple (alien-zap squares)
+  const alienZapSet = new Set(
+    legalMoves.filter(m => m.alienCapture)
+              .map(m => m.alienCapture[0]*8 + m.alienCapture[1])
+  );
+
+  for (let row = 0; row < 8; row++) {
+    for (let col = 0; col < 8; col++) {
+      const sq = document.createElement('div');
+      const isLight = (row + col) % 2 === 0;
+      sq.className = 'sq ' + (isLight ? 'light' : 'dark');
+
+      const key = row*8 + col;
+      const piece = board[row][col];
+
+      if (selected && selected[0]===row && selected[1]===col) {
+        sq.classList.add('selected');
+      } else if (lastFrom && lastFrom[0]===row && lastFrom[1]===col) {
+        sq.classList.add('last-from');
+      } else if (lastTo && lastTo[0]===row && lastTo[1]===col) {
+        sq.classList.add('last-to');
+      }
+
+      if (alienZapSet.has(key)) {
+        sq.classList.add('alien-zap');
+      } else if (movHintSet.has(key)) {
+        sq.classList.add('hint');
+        if (movCapSet.has(key)) sq.classList.add('dot-capture');
+        else sq.classList.add('dot');
+      }
+
+      if (piece && piece.type === 'K' && piece.color === turn && isInCheck(board, turn)) {
+        sq.classList.add('in-check');
+      }
+
+      if (shopSelectedType && piece && piece.color === turn &&
+          piece.type !== 'K' && piece.type !== 'P') {
+        sq.classList.add('swap-target');
+      }
+
+      sq.innerHTML = getPieceHtml(piece);
+      sq.dataset.row = row;
+      sq.dataset.col = col;
+      sq.addEventListener('click', onSquareClick);
+      boardEl.appendChild(sq);
+    }
+  }
+}
+
+function updateStatus() {
+  const el = document.getElementById('status-bar');
+  if (gameOver) return;
+
+  if (shopSelectedType) {
+    const names = { F:'Frog', M:'Man', A:'Alien' };
+    el.textContent = `${turn==='w'?'White':'Black'}: click a piece to replace with ${names[shopSelectedType]||shopSelectedType}`;
+    return;
+  }
+
+  const inCheck = isInCheck(board, turn);
+  const moves = getAllLegalMoves(board, turn, castleRights, enPassantSq, lastFrom);
+  if (moves.length === 0) {
+    el.textContent = inCheck
+      ? (turn==='w'?'Black':'White') + ' wins by checkmate! ♛'
+      : 'Stalemate — Draw!';
+    gameOver = true;
+    return;
+  }
+  if (halfmoveClock >= 100) { el.textContent = 'Draw by 50-move rule.'; gameOver = true; return; }
+  el.textContent = (turn==='w'?'White':'Black') + "'s turn" + (inCheck ? ' — CHECK!' : '');
+}
+
+function updateCaptures() {
+  document.getElementById('cap-white').textContent = capturedByWhite.map(getCapDisplayHtml).join('');
+  document.getElementById('cap-black').textContent = capturedByBlack.map(getCapDisplayHtml).join('');
+}
+
+// ─── Shop ─────────────────────────────────────────────────────────────────────
+
+const SHOP_PIECES = [
+  { type:'F', name:'The Frog',  emoji:'🐸' },
+  { type:'M', name:'The Man',   emoji:'🧍' },
+  { type:'A', name:'The Alien', emoji:'👽' },
+  { type:'L', name:'The Mole',  emoji:'🐭' },
+  { type:'T', name:'The Robot', emoji:'🤖' },
+];
+
+function renderShop() {
+  SHOP_PIECES.forEach(p => {
+    const card = document.getElementById('shop-card-' + p.type);
+    if (card) card.classList.toggle('selected', shopSelectedType === p.type);
+  });
+  const cancel = document.getElementById('shop-cancel');
+  cancel.style.display = shopSelectedType ? 'block' : 'none';
+  const hint = document.getElementById('shop-hint');
+  if (shopSelectedType) {
+    const p = SHOP_PIECES.find(x => x.type === shopSelectedType);
+    hint.textContent = `Click a highlighted piece on the board to replace it with ${p?p.name:shopSelectedType}. Costs your turn.`;
+  } else {
+    hint.textContent = 'Click a piece below, then swap one of your non-King/Pawn pieces. Costs your turn.';
+  }
+}
+
+function selectShopPiece(type) {
+  if (gameOver) return;
+  if (mode === 'cpu' && turn === cpuColor) return;
+  shopSelectedType = shopSelectedType === type ? null : type;
+  selected = null; legalMoves = [];
+  render(); renderShop(); updateStatus();
+}
+
+function cancelShopSelect() {
+  shopSelectedType = null;
+  render(); renderShop(); updateStatus();
+}
+
+function applyShopSwap(row, col) {
+  saveHistory();
+  board[row][col] = { color:turn, type:shopSelectedType };
+  lastFrom = [row, col]; lastTo = [row, col];
+  halfmoveClock++;
+  shopSelectedType = null;
+  finishMove(() => afterMove());
+  renderShop();
+}
+
+// ─── Input ───────────────────────────────────────────────────────────────────
+
+function onSquareClick(e) {
+  if (gameOver) return;
+  if (mode === 'cpu' && turn === cpuColor) return;
+
+  const row = +e.currentTarget.dataset.row;
+  const col = +e.currentTarget.dataset.col;
+  const piece = board[row][col];
+
+  // Shop swap mode
+  if (shopSelectedType) {
+    if (piece && piece.color === turn && piece.type !== 'K' && piece.type !== 'P') {
+      applyShopSwap(row, col);
+    } else {
+      cancelShopSelect();
+    }
+    return;
+  }
+
+  // Selected piece: try to move or alien-zap
+  if (selected) {
+    // Regular move to this square
+    const move = legalMoves.find(m =>
+      !m.alienCapture && m.to[0] === row && m.to[1] === col
+    );
+    if (move) { executeMove(move, () => afterMove()); return; }
+
+    // Alien adjacent capture: user clicks the target enemy square
+    const zapMove = legalMoves.find(m =>
+      m.alienCapture && m.alienCapture[0] === row && m.alienCapture[1] === col
+    );
+    if (zapMove) { executeMove(zapMove, () => afterMove()); return; }
+  }
+
+  // Select a friendly piece
+  if (piece && piece.color === turn) {
+    selected = [row, col];
+    legalMoves = getLegalMovesForPiece(board, row, col, turn, castleRights, enPassantSq, lastFrom);
+  } else {
+    selected = null; legalMoves = [];
+  }
+  render();
+}
+
+// ─── Move Execution ──────────────────────────────────────────────────────────
+
+function saveHistory() {
+  history.push({
+    board: deepCopyBoard(board), turn,
+    castleRights: {...castleRights}, enPassantSq, halfmoveClock, fullmove,
+    capturedByWhite: [...capturedByWhite], capturedByBlack: [...capturedByBlack],
+    lastFrom: lastFrom ? [...lastFrom] : null,
+    lastTo:   lastTo   ? [...lastTo]   : null,
+    shopSelectedType,
+  });
+}
+
+function executeMove(move, callback) {
+  saveHistory();
+  const { from, to, ep, castle, promo, alienCapture } = move;
+
+  // ── Alien adjacent capture (piece stays put) ──
+  if (alienCapture) {
+    const target = board[alienCapture[0]][alienCapture[1]];
+    if (target) {
+      if (turn === 'w') capturedByWhite.push('b' + target.type);
+      else              capturedByBlack.push('w' + target.type);
+    }
+    board[alienCapture[0]][alienCapture[1]] = null;
+    halfmoveClock = 0;
+    // Alien didn't vacate any square — use its own position so lastFrom isn't useful to opponent
+    lastFrom = [...from]; lastTo = [...from];
+    finishMove(callback);
+    return;
+  }
+
+  // ── Normal move ──
+  const piece  = board[from[0]][from[1]];
+  const target = board[to[0]][to[1]];
+
+  if (target) {
+    if (turn === 'w') capturedByWhite.push('b' + target.type);
+    else              capturedByBlack.push('w' + target.type);
+    halfmoveClock = 0;
+  } else if (piece.type === 'P') {
+    halfmoveClock = 0;
+  } else {
+    halfmoveClock++;
+  }
+
+  if (ep) {
+    const cap = board[from[0]][to[1]];
+    if (turn === 'w') capturedByWhite.push('b' + cap.type);
+    else              capturedByBlack.push('w' + cap.type);
+    board[from[0]][to[1]] = null;
+  }
+
+  board[to[0]][to[1]] = piece;
+  board[from[0]][from[1]] = null;
+
+  if (castle) {
+    if (castle === 'K') { board[from[0]][5] = board[from[0]][7]; board[from[0]][7] = null; }
+    else                { board[from[0]][3] = board[from[0]][0]; board[from[0]][0] = null; }
+  }
+
+  if (piece.type === 'K') { castleRights[turn+'K'] = false; castleRights[turn+'Q'] = false; }
+  if (piece.type === 'R') {
+    if (from[1] === 7) castleRights[turn+'K'] = false;
+    if (from[1] === 0) castleRights[turn+'Q'] = false;
+  }
+
+  enPassantSq = (piece.type === 'P' && Math.abs(to[0]-from[0]) === 2)
+    ? [(from[0]+to[0])>>1, from[1]] : null;
+
+  lastFrom = [...from]; lastTo = [...to];
+
+  if (piece.type === 'P' && (to[0] === 0 || to[0] === 7)) {
+    if (promo) {
+      board[to[0]][to[1]] = { color:turn, type:promo };
+      finishMove(callback);
+    } else {
+      showPromoModal(turn, type => {
+        board[to[0]][to[1]] = { color:turn, type };
+        finishMove(callback);
+      });
+    }
+  } else {
+    finishMove(callback);
+  }
+}
+
+function finishMove(callback) {
+  if (turn === 'b') fullmove++;
+  turn = turn === 'w' ? 'b' : 'w';
+  selected = null; legalMoves = [];
+  render(); updateStatus(); updateCaptures();
+  if (callback) callback();
+}
+
+function afterMove() {
+  if (!gameOver && mode === 'cpu' && turn === cpuColor) setTimeout(doCpuMove, 400);
+}
+
+function undoMove() {
+  if (history.length === 0) return;
+  let n = (mode === 'cpu')
+    ? (turn !== cpuColor ? Math.min(2, history.length) : Math.min(1, history.length))
+    : 1;
+  for (let i = 0; i < n; i++) {
+    const prev = history.pop();
+    if (!prev) break;
+    board = prev.board; turn = prev.turn;
+    castleRights = prev.castleRights; enPassantSq = prev.enPassantSq;
+    halfmoveClock = prev.halfmoveClock; fullmove = prev.fullmove;
+    capturedByWhite = prev.capturedByWhite; capturedByBlack = prev.capturedByBlack;
+    lastFrom = prev.lastFrom; lastTo = prev.lastTo;
+  }
+  gameOver = false; shopSelectedType = null; selected = null; legalMoves = [];
+  render(); renderShop(); updateStatus(); updateCaptures();
+}
+
+// ─── Promotion Modal ─────────────────────────────────────────────────────────
+
+function showPromoModal(color, callback) {
+  promoCallback = callback;
+  const el = document.getElementById('promo-pieces');
+  el.innerHTML = '';
+  ['Q','R','B','N'].forEach(type => {
+    const span = document.createElement('span');
+    span.className = 'promo-piece';
+    span.textContent = UNICODE[color + type];
+    span.onclick = () => {
+      document.getElementById('promo-modal').classList.remove('show');
+      promoCallback(type); promoCallback = null;
+    };
+    el.appendChild(span);
+  });
+  document.getElementById('promo-modal').classList.add('show');
+}
+
+// ─── Mode / Difficulty ───────────────────────────────────────────────────────
+
+function setMode(m) {
+  mode = m;
+  document.getElementById('btn-2p').classList.toggle('active', m === '2p');
+  document.getElementById('btn-cpu').classList.toggle('active', m === 'cpu');
+  document.getElementById('difficulty-wrap').style.display = m === 'cpu' ? 'flex' : 'none';
+  document.getElementById('cpu-side-label').textContent = '(CPU plays Black)';
+  newGame();
+}
+function setDifficulty(v) { cpuDepth = +v; }
+
+// ─── Legal Move Generation ────────────────────────────────────────────────────
+
+function inBounds(r, c) { return r >= 0 && r < 8 && c >= 0 && c < 8; }
+function opp(color)     { return color === 'w' ? 'b' : 'w'; }
+
+// lastFromSq: the square vacated by the previous half-move (for Alien teleport)
+function getPseudoMoves(b, row, col, color, epSq, lastFromSq) {
+  const piece = b[row][col];
+  if (!piece || piece.color !== color) return [];
+  const moves = [];
+  const { type } = piece;
+  const dir = color === 'w' ? -1 : 1;
+
+  if (type === 'P') {
+    const r1 = row + dir;
+    if (inBounds(r1, col) && !b[r1][col]) {
+      moves.push({ from:[row,col], to:[r1,col] });
+      const r2 = row + 2*dir, startRow = color==='w' ? 6 : 1;
+      if (row === startRow && !b[r2][col]) moves.push({ from:[row,col], to:[r2,col] });
+    }
+    for (const dc of [-1, 1]) {
+      const cc = col + dc;
+      if (!inBounds(r1, cc)) continue;
+      if (b[r1][cc] && b[r1][cc].color === opp(color)) moves.push({ from:[row,col], to:[r1,cc] });
+      if (epSq && r1 === epSq[0] && cc === epSq[1])     moves.push({ from:[row,col], to:[r1,cc], ep:true });
+    }
+  }
+
+  if (type === 'N') {
+    for (const [dr,dc] of [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]) {
+      const r=row+dr, c=col+dc;
+      if (inBounds(r,c) && (!b[r][c] || b[r][c].color !== color)) moves.push({ from:[row,col], to:[r,c] });
+    }
+  }
+
+  if (type === 'B' || type === 'Q') {
+    for (const [dr,dc] of [[-1,-1],[-1,1],[1,-1],[1,1]]) {
+      let r=row+dr, c=col+dc;
+      while (inBounds(r,c)) {
+        if (b[r][c]) { if (b[r][c].color !== color) moves.push({ from:[row,col], to:[r,c] }); break; }
+        moves.push({ from:[row,col], to:[r,c] });
+        r+=dr; c+=dc;
+      }
+    }
+  }
+
+  if (type === 'R' || type === 'Q') {
+    for (const [dr,dc] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+      let r=row+dr, c=col+dc;
+      while (inBounds(r,c)) {
+        if (b[r][c]) { if (b[r][c].color !== color) moves.push({ from:[row,col], to:[r,c] }); break; }
+        moves.push({ from:[row,col], to:[r,c] });
+        r+=dr; c+=dc;
+      }
+    }
+  }
+
+  if (type === 'K') {
+    for (const [dr,dc] of [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]]) {
+      const r=row+dr, c=col+dc;
+      if (inBounds(r,c) && (!b[r][c] || b[r][c].color !== color)) moves.push({ from:[row,col], to:[r,c] });
+    }
+  }
+
+  if (type === 'F') {
+    for (const [dr,dc] of [[-2,-2],[-2,0],[-2,2],[0,-2],[0,2],[2,-2],[2,0],[2,2]]) {
+      const r=row+dr, c=col+dc;
+      if (inBounds(r,c) && (!b[r][c] || b[r][c].color !== color)) moves.push({ from:[row,col], to:[r,c] });
+    }
+  }
+
+  if (type === 'M') {
+    for (const [dr,dc] of [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]]) {
+      const r=row+dr, c=col+dc;
+      if (inBounds(r,c) && (!b[r][c] || b[r][c].color !== color)) moves.push({ from:[row,col], to:[r,c] });
+    }
+  }
+
+  if (type === 'T') {
+    // Robot: slides 1-3 squares in any direction, blocked by pieces, captures by landing
+    for (const [dr,dc] of [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[-1,1],[1,-1],[1,1]]) {
+      let r=row+dr, c=col+dc, steps=0;
+      while (inBounds(r,c) && steps < 3) {
+        if (b[r][c]) {
+          if (b[r][c].color !== color) moves.push({ from:[row,col], to:[r,c] });
+          break;
+        }
+        moves.push({ from:[row,col], to:[r,c] });
+        r+=dr; c+=dc; steps++;
+      }
+    }
+  }
+
+  if (type === 'L') {
+    // Mole: teleports to any empty square, cannot capture
+    for (let r=0; r<8; r++) for (let c=0; c<8; c++)
+      if ((r!==row || c!==col) && !b[r][c])
+        moves.push({ from:[row,col], to:[r,c] });
+  }
+
+  if (type === 'A') {
+    // 1. Adjacent capture without moving — zap any neighbouring enemy
+    for (const [dr,dc] of [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]]) {
+      const r=row+dr, c=col+dc;
+      if (inBounds(r,c) && b[r][c] && b[r][c].color === opp(color)) {
+        moves.push({ from:[row,col], to:[row,col], alienCapture:[r,c] });
+      }
+    }
+    // 2. Teleport to the square just vacated by the previous move
+    if (lastFromSq) {
+      const [lr, lc] = lastFromSq;
+      if (inBounds(lr, lc) && !b[lr][lc]) {
+        moves.push({ from:[row,col], to:[lr,lc] });
+      }
+    }
+  }
+
+  return moves;
+}
+
+function isSquareAttacked(b, row, col, byColor, lastFromSq) {
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const p = b[r][c];
+      if (!p || p.color !== byColor) continue;
+      const ms = getPseudoMoves(b, r, c, byColor, null, lastFromSq);
+      // For attack purposes, alienCapture moves attack the alienCapture square
+      if (ms.some(m => m.alienCapture
+            ? m.alienCapture[0]===row && m.alienCapture[1]===col
+            : m.to[0]===row && m.to[1]===col)) return true;
+    }
+  }
+  return false;
+}
+
+function isInCheck(b, color, lastFromSq) {
+  let kr=-1, kc=-1;
+  for (let r=0; r<8; r++) for (let c=0; c<8; c++)
+    if (b[r][c] && b[r][c].color===color && b[r][c].type==='K') { kr=r; kc=c; }
+  return kr !== -1 && isSquareAttacked(b, kr, kc, opp(color), lastFromSq);
+}
+
+function applyMoveToBoard(b, move) {
+  const nb = deepCopyBoard(b);
+  const { from, to, ep, castle, alienCapture } = move;
+
+  if (alienCapture) {
+    nb[alienCapture[0]][alienCapture[1]] = null;
+    return nb;
+  }
+
+  const piece = nb[from[0]][from[1]];
+  if (ep) nb[from[0]][to[1]] = null;
+  nb[to[0]][to[1]] = piece;
+  nb[from[0]][from[1]] = null;
+  if (castle) {
+    if (castle === 'K') { nb[from[0]][5] = nb[from[0]][7]; nb[from[0]][7] = null; }
+    else                { nb[from[0]][3] = nb[from[0]][0]; nb[from[0]][0] = null; }
+  }
+  return nb;
+}
+
+// Returns the lastFrom that would result from applying this move (for threading through minimax)
+function nextLastFrom(move) {
+  if (move.alienCapture) return move.from; // alien didn't vacate its square
+  return move.from;                        // normal move vacates 'from'
+}
+
+function getLegalMovesForPiece(b, row, col, color, cr, epSq, lastFromSq) {
+  const pseudo = getPseudoMoves(b, row, col, color, epSq, lastFromSq);
+  const legal = pseudo.filter(m => {
+    const nb = applyMoveToBoard(b, m);
+    // After alien capture the piece stays put; after normal move 'from' is vacated
+    const newLF = m.alienCapture ? m.from : m.from;
+    return !isInCheck(nb, color, newLF);
+  });
+
+  // Castling
+  const piece = b[row][col];
+  if (piece && piece.type === 'K') {
+    const br = color==='w' ? 7 : 0;
+    if (row===br && col===4) {
+      if (cr[color+'K'] && !b[br][5] && !b[br][6] &&
+          !isSquareAttacked(b,br,4,opp(color),lastFromSq) &&
+          !isSquareAttacked(b,br,5,opp(color),lastFromSq) &&
+          !isSquareAttacked(b,br,6,opp(color),lastFromSq))
+        legal.push({ from:[br,4], to:[br,6], castle:'K' });
+      if (cr[color+'Q'] && !b[br][3] && !b[br][2] && !b[br][1] &&
+          !isSquareAttacked(b,br,4,opp(color),lastFromSq) &&
+          !isSquareAttacked(b,br,3,opp(color),lastFromSq) &&
+          !isSquareAttacked(b,br,2,opp(color),lastFromSq))
+        legal.push({ from:[br,4], to:[br,2], castle:'Q' });
+    }
+  }
+  return legal;
+}
+
+function getAllLegalMoves(b, color, cr, epSq, lastFromSq) {
+  const all = [];
+  for (let r=0; r<8; r++) for (let c=0; c<8; c++)
+    if (b[r][c] && b[r][c].color===color)
+      all.push(...getLegalMovesForPiece(b, r, c, color, cr, epSq, lastFromSq));
+  return all;
+}
+
+// ─── CPU (Minimax + Alpha-Beta) ───────────────────────────────────────────────
+
+const PIECE_VALUES = { P:100, N:320, B:330, R:500, Q:900, K:20000, F:300, M:250, A:350, L:120, T:420 };
+
+const PST = {
+  P:[[ 0, 0, 0, 0, 0, 0, 0, 0],[50,50,50,50,50,50,50,50],[10,10,20,30,30,20,10,10],
+     [ 5, 5,10,25,25,10, 5, 5],[ 0, 0, 0,20,20, 0, 0, 0],[ 5,-5,-10,0,0,-10,-5,5],
+     [ 5,10,10,-20,-20,10,10, 5],[ 0, 0, 0, 0, 0, 0, 0, 0]],
+  N:[[-50,-40,-30,-30,-30,-30,-40,-50],[-40,-20,0,0,0,0,-20,-40],[-30,0,10,15,15,10,0,-30],
+     [-30,5,15,20,20,15,5,-30],[-30,0,15,20,20,15,0,-30],[-30,5,10,15,15,10,5,-30],
+     [-40,-20,0,5,5,0,-20,-40],[-50,-40,-30,-30,-30,-30,-40,-50]],
+  B:[[-20,-10,-10,-10,-10,-10,-10,-20],[-10,0,0,0,0,0,0,-10],[-10,0,5,10,10,5,0,-10],
+     [-10,5,5,10,10,5,5,-10],[-10,0,10,10,10,10,0,-10],[-10,10,10,10,10,10,10,-10],
+     [-10,5,0,0,0,0,5,-10],[-20,-10,-10,-10,-10,-10,-10,-20]],
+  R:[[ 0,0,0,0,0,0,0,0],[5,10,10,10,10,10,10,5],[-5,0,0,0,0,0,0,-5],
+     [-5,0,0,0,0,0,0,-5],[-5,0,0,0,0,0,0,-5],[-5,0,0,0,0,0,0,-5],
+     [-5,0,0,0,0,0,0,-5],[0,0,0,5,5,0,0,0]],
+  Q:[[-20,-10,-10,-5,-5,-10,-10,-20],[-10,0,0,0,0,0,0,-10],[-10,0,5,5,5,5,0,-10],
+     [-5,0,5,5,5,5,0,-5],[0,0,5,5,5,5,0,-5],[-10,5,5,5,5,5,0,-10],
+     [-10,0,5,0,0,0,0,-10],[-20,-10,-10,-5,-5,-10,-10,-20]],
+  K:[[-30,-40,-40,-50,-50,-40,-40,-30],[-30,-40,-40,-50,-50,-40,-40,-30],
+     [-30,-40,-40,-50,-50,-40,-40,-30],[-30,-40,-40,-50,-50,-40,-40,-30],
+     [-20,-30,-30,-40,-40,-30,-30,-20],[-10,-20,-20,-20,-20,-20,-20,-10],
+     [20,20,0,0,0,0,20,20],[20,30,10,0,0,10,30,20]]
+};
+
+function evaluate(b) {
+  let score = 0;
+  for (let r=0; r<8; r++) for (let c=0; c<8; c++) {
+    const p = b[r][c]; if (!p) continue;
+    const val = PIECE_VALUES[p.type] || 0;
+    const pr  = p.color==='w' ? r : 7-r;
+    const pst = PST[p.type] ? PST[p.type][pr][c] : 0;
+    score += p.color==='w' ? (val+pst) : -(val+pst);
+  }
+  return score;
+}
+
+function minimax(b, depth, alpha, beta, isMax, cr, epSq, lf) {
+  const color = isMax ? 'w' : 'b';
+  const moves = getAllLegalMoves(b, color, cr, epSq, lf);
+
+  if (depth === 0 || moves.length === 0) {
+    if (moves.length === 0) {
+      return isInCheck(b, color, lf)
+        ? (isMax ? -100000 : 100000)
+        : 0;
+    }
+    return evaluate(b);
+  }
+
+  moves.sort((a, b2) => {
+    const av = (b[a.to[0]][a.to[1]] || a.alienCapture) ? 1 : 0;
+    const bv = (b[b2.to[0]][b2.to[1]] || b2.alienCapture) ? 1 : 0;
+    return bv - av;
+  });
+
+  if (isMax) {
+    let best = -Infinity;
+    for (const m of moves) {
+      const nb = applyMoveToBoard(b, m);
+      const newCr = updateCr(cr, b, m);
+      const newEp = getNewEp(b, m);
+      const newLf = nextLastFrom(m);
+      const val = minimax(nb, depth-1, alpha, beta, false, newCr, newEp, newLf);
+      best = Math.max(best, val); alpha = Math.max(alpha, best);
+      if (beta <= alpha) break;
+    }
+    return best;
+  } else {
+    let best = Infinity;
+    for (const m of moves) {
+      const nb = applyMoveToBoard(b, m);
+      const newCr = updateCr(cr, b, m);
+      const newEp = getNewEp(b, m);
+      const newLf = nextLastFrom(m);
+      const val = minimax(nb, depth-1, alpha, beta, true, newCr, newEp, newLf);
+      best = Math.min(best, val); beta = Math.min(beta, best);
+      if (beta <= alpha) break;
+    }
+    return best;
+  }
+}
+
+function updateCr(cr, b, m) {
+  const newCr = {...cr};
+  const piece = b[m.from[0]][m.from[1]];
+  if (!piece) return newCr;
+  if (piece.type === 'K') { newCr[piece.color+'K'] = false; newCr[piece.color+'Q'] = false; }
+  if (piece.type === 'R') {
+    if (m.from[1] === 7) newCr[piece.color+'K'] = false;
+    if (m.from[1] === 0) newCr[piece.color+'Q'] = false;
+  }
+  return newCr;
+}
+
+function getNewEp(b, m) {
+  const piece = b[m.from[0]][m.from[1]];
+  return (piece && piece.type === 'P' && Math.abs(m.to[0]-m.from[0]) === 2)
+    ? [(m.from[0]+m.to[0])>>1, m.from[1]] : null;
+}
+
+function doCpuMove() {
+  if (gameOver || turn !== cpuColor) return;
+  const moves = getAllLegalMoves(board, cpuColor, castleRights, enPassantSq, lastFrom);
+  if (moves.length === 0) return;
+
+  let bestMove = null, bestVal = cpuColor==='b' ? Infinity : -Infinity;
+
+  for (const m of moves) {
+    const nb   = applyMoveToBoard(board, m);
+    const newCr = updateCr(castleRights, board, m);
+    const newEp = getNewEp(board, m);
+    const newLf = nextLastFrom(m);
+    const val = minimax(nb, cpuDepth-1, -Infinity, Infinity, cpuColor==='b' ? false : true, newCr, newEp, newLf);
+    if (cpuColor==='b' ? val < bestVal : val > bestVal) { bestVal = val; bestMove = m; }
+  }
+
+  if (!bestMove) bestMove = moves[Math.floor(Math.random()*moves.length)];
+
+  if (!bestMove.alienCapture && board[bestMove.from[0]][bestMove.from[1]]?.type === 'P' &&
+      (bestMove.to[0] === 0 || bestMove.to[0] === 7)) {
+    bestMove = {...bestMove, promo:'Q'};
+  }
+
+  executeMove(bestMove, () => {});
+}
+
+// ─── Utilities ───────────────────────────────────────────────────────────────
+
+function deepCopyBoard(b) {
+  return b.map(row => row.map(p => p ? {...p} : null));
+}
+
+// ─── Boot ────────────────────────────────────────────────────────────────────
+
+newGame();
+</script>
+</body>
+</html>
