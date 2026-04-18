@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lucas TV</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #1a1a2e;
+      background-image:
+        radial-gradient(ellipse at 20% 50%, #16213e 0%, transparent 60%),
+        radial-gradient(ellipse at 80% 50%, #0f3460 0%, transparent 60%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Courier New', monospace;
+      overflow: hidden;
+    }
+
+    /* ─── TV CABINET ─── */
+    .tv {
+      position: relative;
+      background: linear-gradient(160deg, #5a3e2b 0%, #3d2a1a 40%, #2c1f10 100%);
+      border-radius: 28px 28px 40px 40px;
+      padding: 28px 28px 40px 28px;
+      box-shadow:
+        0 0 0 4px #6b4c30,
+        0 0 0 7px #2c1f10,
+        0 12px 60px rgba(0,0,0,0.8),
+        inset 0 2px 4px rgba(255,220,150,0.15);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      width: 780px;
+    }
+
+    /* wood grain overlay */
+    .tv::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background-image: repeating-linear-gradient(
+        92deg,
+        transparent 0px,
+        rgba(0,0,0,0.04) 1px,
+        transparent 2px,
+        transparent 6px
+      );
+      pointer-events: none;
+    }
+
+    /* ─── TOP ROW: screen + side panel ─── */
+    .tv-body {
+      display: flex;
+      align-items: center;
+      gap: 22px;
+      width: 100%;
+    }
+
+    /* ─── SCREEN HOUSING ─── */
+    .screen-housing {
+      flex: 1;
+      background: #111;
+      border-radius: 18px;
+      padding: 14px;
+      box-shadow:
+        inset 0 0 30px rgba(0,0,0,0.9),
+        0 0 0 3px #222,
+        0 4px 12px rgba(0,0,0,0.6);
+      position: relative;
+    }
+
+    .screen-bezel {
+      position: relative;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #000;
+      box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
+    }
+
+    /* CRT curvature illusion */
+    .screen-bezel::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 12px;
+      background: radial-gradient(
+        ellipse at 30% 25%,
+        rgba(255,255,255,0.07) 0%,
+        transparent 55%
+      );
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    /* scanlines overlay */
+    .screen-bezel::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.18) 2px,
+        rgba(0,0,0,0.18) 4px
+      );
+      pointer-events: none;
+      z-index: 9;
+      border-radius: 12px;
+    }
+
+    iframe#tv-screen {
+      display: block;
+      width: 100%;
+      height: 370px;
+      border: none;
+      border-radius: 10px;
+    }
+
+    /* ─── STATIC OVERLAY ─── */
+    #static-overlay {
+      position: absolute;
+      inset: 14px;
+      border-radius: 12px;
+      z-index: 20;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.1s;
+      background: #888;
+    }
+
+    #static-canvas {
+      width: 100%;
+      height: 100%;
+      border-radius: 10px;
+    }
+
+    /* ─── SIDE CONTROL PANEL ─── */
+    .side-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      background: linear-gradient(180deg, #3d2a1a 0%, #2c1f10 100%);
+      border-radius: 12px;
+      padding: 16px 12px;
+      box-shadow: inset 0 2px 6px rgba(0,0,0,0.5), 0 0 0 2px #1a1008;
+      min-width: 90px;
+    }
+
+    .panel-label {
+      font-size: 9px;
+      color: #a07850;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 4px;
+    }
+
+    /* ─── CHANNEL BUTTONS ─── */
+    .ch-btn {
+      width: 62px;
+      height: 38px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      font-weight: bold;
+      letter-spacing: 1px;
+      position: relative;
+      transition: transform 0.08s, box-shadow 0.08s;
+      outline: none;
+      background: linear-gradient(160deg, #4a3520 0%, #2e1f0e 100%);
+      color: #c8a070;
+      box-shadow: 0 4px 0 #1a0f05, 0 5px 8px rgba(0,0,0,0.5);
+    }
+
+    .ch-btn::before {
+      content: '';
+      position: absolute;
+      top: 2px; left: 4px; right: 4px;
+      height: 30%;
+      background: rgba(255,255,255,0.06);
+      border-radius: 4px 4px 0 0;
+    }
+
+    .ch-btn:hover {
+      background: linear-gradient(160deg, #5a4530 0%, #3e2f1e 100%);
+      color: #e8c090;
+    }
+
+    .ch-btn:active,
+    .ch-btn.active {
+      transform: translateY(3px);
+      box-shadow: 0 1px 0 #1a0f05, 0 2px 4px rgba(0,0,0,0.5);
+    }
+
+    .ch-btn.active {
+      background: linear-gradient(160deg, #b06820 0%, #7a4010 100%);
+      color: #ffe0a0;
+      box-shadow: 0 1px 0 #1a0f05, 0 0 10px rgba(255,160,60,0.4);
+    }
+
+    /* ─── POWER BUTTON ─── */
+    .power-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: 3px solid #3a2010;
+      cursor: pointer;
+      background: radial-gradient(circle at 40% 35%, #cc3a1a, #7a1a08);
+      color: #ffaa88;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 0 #3a1008, 0 0 12px rgba(180,40,0,0.5);
+      transition: transform 0.08s, box-shadow 0.08s;
+      margin-top: 6px;
+    }
+
+    .power-btn:hover { background: radial-gradient(circle at 40% 35%, #dd4a2a, #9a2a18); }
+    .power-btn:active { transform: translateY(3px); box-shadow: 0 1px 0 #3a1008; }
+    .power-btn.off { background: radial-gradient(circle at 40% 35%, #442010, #2a1008); color: #664030; box-shadow: 0 4px 0 #1a0808; }
+
+    /* ─── VOLUME KNOB AREA ─── */
+    .knob-row {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      margin-top: 4px;
+    }
+
+    .knob-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .knob-label {
+      font-size: 8px;
+      color: #806040;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .knob {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 38% 32%, #5a4028, #2a1a0a);
+      box-shadow: 0 3px 0 #1a0f05, 0 0 8px rgba(0,0,0,0.5), inset 0 1px 2px rgba(255,200,100,0.1);
+      border: 2px solid #3a2510;
+      cursor: pointer;
+      position: relative;
+      transition: transform 0.2s;
+    }
+
+    .knob::after {
+      content: '';
+      position: absolute;
+      top: 4px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 3px;
+      height: 10px;
+      background: #c09060;
+      border-radius: 2px;
+    }
+
+    /* ─── BOTTOM STRIP ─── */
+    .tv-bottom {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      padding: 0 10px;
+    }
+
+    .brand {
+      font-size: 18px;
+      font-weight: bold;
+      color: #c09060;
+      letter-spacing: 4px;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.6);
+      font-style: italic;
+    }
+
+    /* indicator light */
+    .indicator {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #44cc44;
+      box-shadow: 0 0 8px #44ff44;
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+
+    .indicator.off {
+      background: #224422;
+      box-shadow: none;
+    }
+
+    /* ─── ANTENNA ─── */
+    .antenna-row {
+      display: flex;
+      justify-content: center;
+      gap: 60px;
+      width: 100%;
+      position: relative;
+    }
+
+    .antenna {
+      width: 5px;
+      height: 70px;
+      background: linear-gradient(180deg, #8a7060 0%, #4a3020 100%);
+      border-radius: 3px;
+      transform-origin: bottom center;
+    }
+
+    .antenna.left  { transform: rotate(-22deg); }
+    .antenna.right { transform: rotate(22deg); }
+
+    /* ─── CHANNEL DISPLAY ─── */
+    #ch-display {
+      font-size: 11px;
+      color: #ffcc66;
+      background: #1a1008;
+      border-radius: 4px;
+      padding: 3px 8px;
+      letter-spacing: 2px;
+      box-shadow: inset 0 0 6px rgba(0,0,0,0.8), 0 0 6px rgba(255,180,40,0.2);
+      min-width: 56px;
+      text-align: center;
+      margin-top: 4px;
+    }
+
+    /* ─── OFF SCREEN ─── */
+    #off-screen {
+      display: none;
+      width: 100%;
+      height: 370px;
+      border-radius: 10px;
+      background: #000;
+      align-items: center;
+      justify-content: center;
+    }
+  </style>
+</head>
+<body>
+
+<div class="tv">
+  <!-- Antenna -->
+  <div class="antenna-row">
+    <div class="antenna left"></div>
+    <div class="antenna right"></div>
+  </div>
+
+  <!-- Main body -->
+  <div class="tv-body">
+
+    <!-- Screen -->
+    <div class="screen-housing">
+      <div class="screen-bezel">
+        <iframe
+          id="tv-screen"
+          src=""
+          allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+          allowfullscreen>
+        </iframe>
+        <div id="off-screen"></div>
+      </div>
+      <div id="static-overlay">
+        <canvas id="static-canvas"></canvas>
+      </div>
+    </div>
+
+    <!-- Side control panel -->
+    <div class="side-panel">
+      <div class="panel-label">Channels</div>
+
+      <button class="ch-btn active" data-ch="1" onclick="switchChannel(1)">CH 1</button>
+      <button class="ch-btn"        data-ch="2" onclick="switchChannel(2)">CH 2</button>
+      <button class="ch-btn"        data-ch="3" onclick="switchChannel(3)">CH 3</button>
+      <button class="ch-btn"        data-ch="4" onclick="switchChannel(4)">CH 4</button>
+      <button class="ch-btn"        data-ch="5" onclick="switchChannel(5)">CH 5</button>
+      <button class="ch-btn"        data-ch="6" onclick="switchChannel(6)">CH 6</button>
+      <button class="ch-btn"        data-ch="7" onclick="switchChannel(7)">CH 7</button>
+      <button class="ch-btn"        data-ch="8" onclick="switchChannel(8)">CH 8</button>
+
+      <div id="ch-display">CH 1</div>
+
+      <button class="power-btn" id="power-btn" onclick="togglePower()" title="Power">⏻</button>
+    </div>
+  </div>
+
+  <!-- Bottom strip -->
+  <div class="tv-bottom">
+    <div class="brand">LucasTV</div>
+    <div class="knob-row">
+      <div class="knob-wrap">
+        <div class="knob" title="Volume"></div>
+        <div class="knob-label">Vol</div>
+      </div>
+      <div class="knob-wrap">
+        <div class="knob" title="Brightness"></div>
+        <div class="knob-label">Brt</div>
+      </div>
+    </div>
+    <div class="indicator" id="indicator"></div>
+  </div>
+</div>
+
+<script>
+  const CHANNELS = {
+    1: 'YQa2-DY7Y_Q',
+    2: 'oUtx8Rr3vTk',
+    3: '6D3tVfqzYis',
+    4: 'Z3CewJFEsEo',
+    5: '68CFHGpQD5w',
+    6: 'Bloiue3mSuA',
+    7: '0EytSWiKrFg',
+    8: 'hQWbFnAeDAo',
+  };
+
+  let currentChannel = 1;
+  let powered = true;
+  let staticInterval = null;
+
+  const screen    = document.getElementById('tv-screen');
+  const offScreen = document.getElementById('off-screen');
+  const overlay   = document.getElementById('static-overlay');
+  const canvas    = document.getElementById('static-canvas');
+  const ctx       = canvas.getContext('2d');
+  const display   = document.getElementById('ch-display');
+  const indicator = document.getElementById('indicator');
+  const powerBtn  = document.getElementById('power-btn');
+
+  function ytSrc(id) {
+    return `https://www.youtube.com/embed/${id}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1`;
+  }
+
+  function drawStatic() {
+    const w = canvas.width  = canvas.offsetWidth;
+    const h = canvas.height = canvas.offsetHeight;
+    const img = ctx.createImageData(w, h);
+    for (let i = 0; i < img.data.length; i += 4) {
+      const v = Math.random() * 255 | 0;
+      img.data[i]   = v;
+      img.data[i+1] = v;
+      img.data[i+2] = v;
+      img.data[i+3] = 210;
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+
+  function showStatic(ms, then) {
+    overlay.style.opacity = '1';
+    staticInterval = setInterval(drawStatic, 40);
+    setTimeout(() => {
+      clearInterval(staticInterval);
+      overlay.style.opacity = '0';
+      if (then) then();
+    }, ms);
+  }
+
+  function setActiveBtn(ch) {
+    document.querySelectorAll('.ch-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector(`.ch-btn[data-ch="${ch}"]`).classList.add('active');
+    display.textContent = `CH ${ch}`;
+  }
+
+  function switchChannel(ch) {
+    if (!powered || ch === currentChannel) return;
+    currentChannel = ch;
+    setActiveBtn(ch);
+    screen.src = '';
+    showStatic(600, () => {
+      screen.src = ytSrc(CHANNELS[ch]);
+    });
+  }
+
+  function togglePower() {
+    powered = !powered;
+    if (powered) {
+      powerBtn.classList.remove('off');
+      indicator.classList.remove('off');
+      offScreen.style.display = 'none';
+      screen.style.display = 'block';
+      showStatic(800, () => {
+        screen.src = ytSrc(CHANNELS[currentChannel]);
+      });
+    } else {
+      clearInterval(staticInterval);
+      overlay.style.opacity = '0';
+      screen.src = '';
+      screen.style.display = 'none';
+      offScreen.style.display = 'flex';
+      powerBtn.classList.add('off');
+      indicator.classList.add('off');
+    }
+  }
+
+  // Boot up
+  window.addEventListener('load', () => {
+    setActiveBtn(1);
+    showStatic(900, () => {
+      screen.src = ytSrc(CHANNELS[1]);
+    });
+  });
+
+  // Keyboard shortcuts: 1-6 to change channel, P to power
+  document.addEventListener('keydown', e => {
+    if (e.key >= '1' && e.key <= '8') switchChannel(parseInt(e.key));
+    if (e.key === 'p' || e.key === 'P') togglePower();
+  });
+</script>
+</body>
+</html>
