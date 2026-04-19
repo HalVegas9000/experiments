@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lucas Doodle</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #1a1a2e; color: #eee; font-family: 'Segoe UI', sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+  #topbar {
+    background: #16213e;
+    border-bottom: 2px solid #0f3460;
+    padding: 6px 12px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-shrink: 0;
+  }
+  #topbar h1 { font-size: 1.2rem; color: #e94560; font-weight: 700; letter-spacing: 1px; }
+
+  .top-group { display: flex; align-items: center; gap: 6px; }
+  .top-label { font-size: 0.7rem; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
+
+  #top-color-swatch {
+    width: 28px; height: 28px;
+    border-radius: 4px;
+    border: 2px solid #555;
+    cursor: pointer;
+    background: #000;
+  }
+  #top-bg-swatch {
+    width: 28px; height: 28px;
+    border-radius: 4px;
+    border: 2px solid #555;
+    cursor: pointer;
+    background: #fff;
+  }
+
+  input[type=color] { display: none; }
+
+  #size-slider { width: 80px; accent-color: #e94560; }
+  #size-display { font-size: 0.75rem; color: #ccc; min-width: 24px; }
+
+  #opacity-slider { width: 80px; accent-color: #e94560; }
+  #opacity-display { font-size: 0.75rem; color: #ccc; min-width: 28px; }
+
+  .sep { width: 1px; height: 28px; background: #333; }
+
+  .top-btn {
+    background: #0f3460;
+    border: 1px solid #1a5276;
+    color: #ccc;
+    border-radius: 4px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    transition: background 0.15s;
+  }
+  .top-btn:hover { background: #1a5276; color: #fff; }
+
+  #main { display: flex; flex: 1; overflow: hidden; }
+
+  /* TOOLBAR */
+  #toolbar {
+    width: 56px;
+    background: #16213e;
+    border-right: 2px solid #0f3460;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 8px 0;
+    gap: 4px;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+
+  .tool-btn {
+    width: 40px; height: 40px;
+    background: #0f3460;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.2rem;
+    transition: all 0.15s;
+    position: relative;
+  }
+  .tool-btn:hover { background: #1a5276; border-color: #5dade2; }
+  .tool-btn.active { background: #e94560; border-color: #ff6b6b; }
+  .tool-btn title { display: none; }
+
+  .tool-tip {
+    position: absolute;
+    left: 48px;
+    background: #333;
+    color: #fff;
+    font-size: 0.7rem;
+    padding: 3px 7px;
+    border-radius: 4px;
+    white-space: nowrap;
+    pointer-events: none;
+    display: none;
+    z-index: 100;
+  }
+  .tool-btn:hover .tool-tip { display: block; }
+
+  .toolbar-sep { width: 32px; height: 1px; background: #333; margin: 4px 0; }
+
+  /* CANVAS AREA */
+  #canvas-wrap {
+    flex: 1;
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #12121f;
+    position: relative;
+  }
+
+  #canvas-container {
+    position: relative;
+    display: inline-block;
+    box-shadow: 0 0 32px rgba(0,0,0,0.7);
+  }
+
+  canvas { display: block; }
+  #main-canvas { position: absolute; top: 0; left: 0; }
+  #overlay-canvas { position: absolute; top: 0; left: 0; }
+
+  /* RIGHT PANEL */
+  #right-panel {
+    width: 180px;
+    background: #16213e;
+    border-left: 2px solid #0f3460;
+    display: flex;
+    flex-direction: column;
+    padding: 10px;
+    gap: 10px;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+
+  .panel-section { display: flex; flex-direction: column; gap: 6px; }
+  .panel-title { font-size: 0.65rem; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+
+  /* Color swatches */
+  #swatches {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 3px;
+  }
+  .swatch {
+    width: 22px; height: 22px;
+    border-radius: 3px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: border-color 0.1s;
+  }
+  .swatch:hover { border-color: #fff; }
+
+  /* Shape options */
+  #shape-opts { display: flex; flex-wrap: wrap; gap: 4px; }
+  .shape-opt {
+    background: #0f3460;
+    border: 1px solid #1a5276;
+    border-radius: 4px;
+    color: #ccc;
+    padding: 3px 7px;
+    cursor: pointer;
+    font-size: 0.7rem;
+  }
+  .shape-opt.active { background: #e94560; border-color: #ff6b6b; color: #fff; }
+
+  #fill-check-wrap { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: #ccc; }
+  #fill-check-wrap input { accent-color: #e94560; }
+
+  /* Text options */
+  #text-opts { display: flex; flex-direction: column; gap: 6px; }
+  #font-size-input { width: 100%; background: #0f3460; border: 1px solid #1a5276; color: #eee; border-radius: 4px; padding: 3px 6px; font-size: 0.75rem; }
+  #font-family-select { width: 100%; background: #0f3460; border: 1px solid #1a5276; color: #eee; border-radius: 4px; padding: 3px 6px; font-size: 0.75rem; }
+  #bold-check-wrap, #italic-check-wrap { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: #ccc; }
+  #bold-check-wrap input, #italic-check-wrap input { accent-color: #e94560; }
+
+  /* Lasso panel */
+  #lasso-opts { display: flex; flex-wrap: wrap; gap: 4px; }
+  .lasso-btn {
+    background: #0f3460;
+    border: 1px solid #1a5276;
+    border-radius: 4px;
+    color: #ccc;
+    padding: 3px 7px;
+    cursor: pointer;
+    font-size: 0.7rem;
+  }
+  .lasso-btn:hover { background: #1a5276; color: #fff; }
+
+  /* Status bar */
+  #statusbar {
+    background: #0f0f1e;
+    border-top: 1px solid #0f3460;
+    padding: 3px 10px;
+    font-size: 0.65rem;
+    color: #666;
+    display: flex;
+    gap: 16px;
+    flex-shrink: 0;
+  }
+
+  /* Text input overlay */
+  #text-input-overlay {
+    position: absolute;
+    display: none;
+    border: 1px dashed #e94560;
+    background: transparent;
+    color: #000;
+    outline: none;
+    resize: none;
+    font-size: 18px;
+    padding: 2px 4px;
+    min-width: 60px;
+    min-height: 24px;
+    z-index: 20;
+    overflow: hidden;
+    line-height: 1.3;
+    white-space: pre;
+  }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <h1>🎨 Lucas Doodle</h1>
+  <div class="sep"></div>
+
+  <div class="top-group">
+    <span class="top-label">Stroke</span>
+    <div id="top-color-swatch" title="Pick stroke color"></div>
+    <input type="color" id="color-picker" value="#000000">
+  </div>
+
+  <div class="top-group">
+    <span class="top-label">Fill / BG</span>
+    <div id="top-bg-swatch" title="Pick fill/bg color"></div>
+    <input type="color" id="bg-picker" value="#ffffff">
+  </div>
+
+  <div class="sep"></div>
+
+  <div class="top-group">
+    <span class="top-label">Size</span>
+    <input type="range" id="size-slider" min="1" max="100" value="8">
+    <span id="size-display">8</span>
+  </div>
+
+  <div class="top-group">
+    <span class="top-label">Opacity</span>
+    <input type="range" id="opacity-slider" min="1" max="100" value="100">
+    <span id="opacity-display">100%</span>
+  </div>
+
+  <div class="sep"></div>
+  <button class="top-btn" id="btn-new">New</button>
+  <button class="top-btn" id="btn-clear">Clear</button>
+  <button class="top-btn" id="btn-save">Save PNG</button>
+  <button class="top-btn" id="btn-undo">Undo</button>
+  <button class="top-btn" id="btn-redo">Redo</button>
+</div>
+
+<div id="main">
+  <!-- TOOLBAR -->
+  <div id="toolbar">
+    <button class="tool-btn active" data-tool="pencil" title="Pencil">✏️<span class="tool-tip">Pencil (P)</span></button>
+    <button class="tool-btn" data-tool="eraser" title="Eraser">🧹<span class="tool-tip">Eraser (E)</span></button>
+    <button class="tool-btn" data-tool="bucket" title="Paint Bucket">🪣<span class="tool-tip">Paint Bucket (B)</span></button>
+    <div class="toolbar-sep"></div>
+    <button class="tool-btn" data-tool="line" title="Line">📏<span class="tool-tip">Line (L)</span></button>
+    <button class="tool-btn" data-tool="shape" title="Shape">⬜<span class="tool-tip">Shape (S)</span></button>
+    <div class="toolbar-sep"></div>
+    <button class="tool-btn" data-tool="text" title="Text">🔤<span class="tool-tip">Text (T)</span></button>
+    <button class="tool-btn" data-tool="eyedropper" title="Eyedropper">💉<span class="tool-tip">Eyedropper (I)</span></button>
+    <div class="toolbar-sep"></div>
+    <button class="tool-btn" data-tool="lasso" title="Lasso">🔲<span class="tool-tip">Lasso (A)</span></button>
+  </div>
+
+  <!-- CANVAS AREA -->
+  <div id="canvas-wrap">
+    <div id="canvas-container">
+      <canvas id="bg-canvas"></canvas>
+      <canvas id="main-canvas"></canvas>
+      <canvas id="overlay-canvas"></canvas>
+    </div>
+    <textarea id="text-input-overlay" rows="1" spellcheck="false"></textarea>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div id="right-panel">
+    <div class="panel-section">
+      <div class="panel-title">Colors</div>
+      <div id="swatches"></div>
+    </div>
+
+    <div class="panel-section" id="shape-section" style="display:none">
+      <div class="panel-title">Shape</div>
+      <div id="shape-opts">
+        <button class="shape-opt active" data-shape="rect">Rect</button>
+        <button class="shape-opt" data-shape="ellipse">Ellipse</button>
+        <button class="shape-opt" data-shape="triangle">Triangle</button>
+        <button class="shape-opt" data-shape="star">Star</button>
+      </div>
+      <div id="fill-check-wrap">
+        <input type="checkbox" id="fill-shape" checked>
+        <label for="fill-shape">Fill shape</label>
+      </div>
+    </div>
+
+    <div class="panel-section" id="text-section" style="display:none">
+      <div class="panel-title">Text</div>
+      <div id="text-opts">
+        <input type="number" id="font-size-input" value="24" min="6" max="200" placeholder="Size">
+        <select id="font-family-select">
+          <option>Arial</option>
+          <option>Georgia</option>
+          <option>Courier New</option>
+          <option>Impact</option>
+          <option>Comic Sans MS</option>
+          <option>Times New Roman</option>
+          <option>Verdana</option>
+        </select>
+        <div id="bold-check-wrap">
+          <input type="checkbox" id="text-bold">
+          <label for="text-bold">Bold</label>
+        </div>
+        <div id="italic-check-wrap">
+          <input type="checkbox" id="text-italic">
+          <label for="text-italic">Italic</label>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-section" id="lasso-section" style="display:none">
+      <div class="panel-title">Selection</div>
+      <div id="lasso-opts">
+        <button class="lasso-btn" id="lasso-copy">Copy</button>
+        <button class="lasso-btn" id="lasso-cut">Cut</button>
+        <button class="lasso-btn" id="lasso-paste">Paste</button>
+        <button class="lasso-btn" id="lasso-delete">Delete</button>
+        <button class="lasso-btn" id="lasso-deselect">Deselect</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STATUS BAR -->
+<div id="statusbar">
+  <span id="status-tool">Tool: Pencil</span>
+  <span id="status-pos">X: 0  Y: 0</span>
+  <span id="status-size">Canvas: 800×600</span>
+  <span id="status-zoom">Zoom: 100%</span>
+</div>
+
+<script>
+// ── STATE ──────────────────────────────────────────────────────────────────
+const W = 800, H = 600;
+let tool = 'pencil';
+let strokeColor = '#000000';
+let fillColor = '#ffffff';
+let brushSize = 8;
+let opacity = 1.0;
+
+// Undo/redo stacks (store ImageData)
+const undoStack = [];
+const redoStack = [];
+const MAX_UNDO = 40;
+
+// Shape state
+let shapeType = 'rect';
+let fillShape = true;
+
+// Line / shape drag state
+let dragging = false;
+let dragStart = { x: 0, y: 0 };
+
+// Lasso state
+let lassoPoints = [];
+let lassoActive = false;
+let lassoClipboard = null; // { data, x, y, w, h }
+let lassoPasteOffset = { x: 0, y: 0 };
+let lassoPasting = false;
+
+// Text state
+let textActive = false;
+let textPos = { x: 0, y: 0 };
+
+// Pencil state
+let lastPoint = null;
+
+// ── CANVAS SETUP ───────────────────────────────────────────────────────────
+const bgCanvas    = document.getElementById('bg-canvas');
+const mainCanvas  = document.getElementById('main-canvas');
+const overlayCanvas = document.getElementById('overlay-canvas');
+[bgCanvas, mainCanvas, overlayCanvas].forEach(c => {
+  c.width = W; c.height = H;
+});
+const bgCtx  = bgCanvas.getContext('2d');
+const ctx    = mainCanvas.getContext('2d');
+const ovCtx  = overlayCanvas.getContext('2d');
+
+bgCtx.fillStyle = '#ffffff';
+bgCtx.fillRect(0, 0, W, H);
+
+const container = document.getElementById('canvas-container');
+container.style.width  = W + 'px';
+container.style.height = H + 'px';
+
+// ── UI ELEMENTS ────────────────────────────────────────────────────────────
+const colorPicker   = document.getElementById('color-picker');
+const bgPicker      = document.getElementById('bg-picker');
+const topColorSwatch = document.getElementById('top-color-swatch');
+const topBgSwatch   = document.getElementById('top-bg-swatch');
+const sizeSlider    = document.getElementById('size-slider');
+const sizeDisplay   = document.getElementById('size-display');
+const opacitySlider = document.getElementById('opacity-slider');
+const opacityDisplay = document.getElementById('opacity-display');
+const textOverlay   = document.getElementById('text-input-overlay');
+const statusTool    = document.getElementById('status-tool');
+const statusPos     = document.getElementById('status-pos');
+
+// ── PALETTE ────────────────────────────────────────────────────────────────
+const PALETTE = [
+  '#000000','#ffffff','#808080','#c0c0c0','#ff0000','#800000',
+  '#ff6600','#ff9900','#ffff00','#808000','#00ff00','#008000',
+  '#00ffff','#008080','#0000ff','#000080','#ff00ff','#800080',
+  '#ff80ab','#ffd1dc','#ffe0b2','#fff9c4','#dcedc8','#b3e5fc',
+  '#e1bee7','#d7ccc8','#f5f5f5','#212121','#795548','#607d8b'
+];
+const swatchContainer = document.getElementById('swatches');
+PALETTE.forEach(c => {
+  const s = document.createElement('div');
+  s.className = 'swatch';
+  s.style.background = c;
+  s.title = c;
+  s.addEventListener('click', e => {
+    if (e.shiftKey) { setFillColor(c); } else { setStrokeColor(c); }
+  });
+  swatchContainer.appendChild(s);
+});
+
+// ── COLOR HELPERS ──────────────────────────────────────────────────────────
+function setStrokeColor(c) {
+  strokeColor = c;
+  topColorSwatch.style.background = c;
+  colorPicker.value = c.length === 7 ? c : '#000000';
+}
+function setFillColor(c) {
+  fillColor = c;
+  topBgSwatch.style.background = c;
+  bgPicker.value = c.length === 7 ? c : '#ffffff';
+}
+setStrokeColor('#000000');
+setFillColor('#ffffff');
+
+topColorSwatch.addEventListener('click', () => colorPicker.click());
+colorPicker.addEventListener('input', () => setStrokeColor(colorPicker.value));
+topBgSwatch.addEventListener('click', () => bgPicker.click());
+bgPicker.addEventListener('input', () => setFillColor(bgPicker.value));
+
+// ── SIZE / OPACITY ─────────────────────────────────────────────────────────
+sizeSlider.addEventListener('input', () => {
+  brushSize = parseInt(sizeSlider.value);
+  sizeDisplay.textContent = brushSize;
+});
+opacitySlider.addEventListener('input', () => {
+  opacity = parseInt(opacitySlider.value) / 100;
+  opacityDisplay.textContent = opacitySlider.value + '%';
+});
+
+// ── TOOL BUTTONS ───────────────────────────────────────────────────────────
+document.querySelectorAll('.tool-btn').forEach(btn => {
+  btn.addEventListener('click', () => selectTool(btn.dataset.tool));
+});
+
+function selectTool(t) {
+  if (tool === 'text') commitText();
+  if (tool === 'lasso') clearLasso();
+  tool = t;
+  document.querySelectorAll('.tool-btn').forEach(b => b.classList.toggle('active', b.dataset.tool === t));
+  statusTool.textContent = 'Tool: ' + t.charAt(0).toUpperCase() + t.slice(1);
+  overlayCanvas.style.cursor = getCursor(t);
+  // Show/hide panels
+  document.getElementById('shape-section').style.display  = t === 'shape'  ? '' : 'none';
+  document.getElementById('text-section').style.display   = t === 'text'   ? '' : 'none';
+  document.getElementById('lasso-section').style.display  = t === 'lasso'  ? '' : 'none';
+}
+
+function getCursor(t) {
+  const map = { pencil:'crosshair', eraser:'cell', bucket:'crosshair', line:'crosshair',
+                shape:'crosshair', text:'text', eyedropper:'crosshair', lasso:'crosshair' };
+  return map[t] || 'default';
+}
+
+// ── SHAPE TOOL OPTIONS ─────────────────────────────────────────────────────
+document.querySelectorAll('.shape-opt').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.shape-opt').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    shapeType = btn.dataset.shape;
+  });
+});
+document.getElementById('fill-shape').addEventListener('change', e => { fillShape = e.target.checked; });
+
+// ── UNDO/REDO ──────────────────────────────────────────────────────────────
+function saveState() {
+  const data = ctx.getImageData(0, 0, W, H);
+  undoStack.push(data);
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+  redoStack.length = 0;
+}
+function undo() {
+  if (!undoStack.length) return;
+  redoStack.push(ctx.getImageData(0, 0, W, H));
+  ctx.putImageData(undoStack.pop(), 0, 0);
+}
+function redo() {
+  if (!redoStack.length) return;
+  undoStack.push(ctx.getImageData(0, 0, W, H));
+  ctx.putImageData(redoStack.pop(), 0, 0);
+}
+document.getElementById('btn-undo').addEventListener('click', undo);
+document.getElementById('btn-redo').addEventListener('click', redo);
+
+// ── CLEAR / NEW / SAVE ─────────────────────────────────────────────────────
+document.getElementById('btn-clear').addEventListener('click', () => {
+  saveState();
+  ctx.clearRect(0, 0, W, H);
+  ovCtx.clearRect(0, 0, W, H);
+});
+document.getElementById('btn-new').addEventListener('click', () => {
+  if (!confirm('Start a new canvas? Unsaved work will be lost.')) return;
+  undoStack.length = 0; redoStack.length = 0;
+  ctx.clearRect(0, 0, W, H);
+  ovCtx.clearRect(0, 0, W, H);
+  bgCtx.fillStyle = '#ffffff';
+  bgCtx.fillRect(0, 0, W, H);
+});
+document.getElementById('btn-save').addEventListener('click', () => {
+  // Merge bg + main into a temp canvas
+  const tmp = document.createElement('canvas');
+  tmp.width = W; tmp.height = H;
+  const tCtx = tmp.getContext('2d');
+  tCtx.drawImage(bgCanvas, 0, 0);
+  tCtx.drawImage(mainCanvas, 0, 0);
+  const a = document.createElement('a');
+  a.download = 'lucas_doodle.png';
+  a.href = tmp.toDataURL('image/png');
+  a.click();
+});
+
+// ── CANVAS POSITION HELPER ─────────────────────────────────────────────────
+function getPos(e) {
+  const rect = overlayCanvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  if (e.touches) {
+    return { x: (e.touches[0].clientX - rect.left) * scaleX,
+             y: (e.touches[0].clientY - rect.top) * scaleY };
+  }
+  return { x: (e.clientX - rect.left) * scaleX,
+           y: (e.clientY - rect.top) * scaleY };
+}
+
+// ── PENCIL DRAWING ─────────────────────────────────────────────────────────
+function drawPencilLine(from, to, color, size, op) {
+  ctx.save();
+  ctx.globalAlpha = op;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = size;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(from.x, from.y);
+  ctx.lineTo(to.x, to.y);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ── FLOOD FILL ─────────────────────────────────────────────────────────────
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return [r, g, b, 255];
+}
+
+function colorMatch(data, idx, target, tolerance=20) {
+  return Math.abs(data[idx]   - target[0]) <= tolerance &&
+         Math.abs(data[idx+1] - target[1]) <= tolerance &&
+         Math.abs(data[idx+2] - target[2]) <= tolerance &&
+         Math.abs(data[idx+3] - target[3]) <= tolerance;
+}
+
+function floodFill(startX, startY, fillHex) {
+  // Composite bg + main for sampling
+  const tmp = document.createElement('canvas');
+  tmp.width = W; tmp.height = H;
+  const tCtx = tmp.getContext('2d');
+  tCtx.drawImage(bgCanvas, 0, 0);
+  tCtx.drawImage(mainCanvas, 0, 0);
+  const imgData = tCtx.getImageData(0, 0, W, H);
+  const data = imgData.data;
+
+  const x0 = Math.floor(startX), y0 = Math.floor(startY);
+  const targetColor = [data[(y0*W+x0)*4], data[(y0*W+x0)*4+1], data[(y0*W+x0)*4+2], data[(y0*W+x0)*4+3]];
+  const fill = hexToRgb(fillHex);
+
+  if (colorMatch(data, (y0*W+x0)*4, fill, 0)) return;
+
+  // Write fill to main canvas only
+  const mainImg = ctx.getImageData(0, 0, W, H);
+  const md = mainImg.data;
+
+  const stack = [[x0, y0]];
+  const visited = new Uint8Array(W * H);
+  visited[y0*W+x0] = 1;
+
+  while (stack.length) {
+    const [cx, cy] = stack.pop();
+    const idx = (cy*W+cx)*4;
+    // Set on main canvas data
+    md[idx]   = fill[0];
+    md[idx+1] = fill[1];
+    md[idx+2] = fill[2];
+    md[idx+3] = Math.round(opacity * 255);
+
+    const neighbors = [[cx-1,cy],[cx+1,cy],[cx,cy-1],[cx,cy+1]];
+    for (const [nx, ny] of neighbors) {
+      if (nx<0||ny<0||nx>=W||ny>=H) continue;
+      const ni = ny*W+nx;
+      if (visited[ni]) continue;
+      visited[ni] = 1;
+      if (colorMatch(data, ni*4, targetColor)) stack.push([nx, ny]);
+    }
+  }
+  ctx.putImageData(mainImg, 0, 0);
+}
+
+// ── EYEDROPPER ─────────────────────────────────────────────────────────────
+function pickColor(x, y) {
+  const tmp = document.createElement('canvas');
+  tmp.width = W; tmp.height = H;
+  const tCtx = tmp.getContext('2d');
+  tCtx.drawImage(bgCanvas, 0, 0);
+  tCtx.drawImage(mainCanvas, 0, 0);
+  const px = tCtx.getImageData(Math.floor(x), Math.floor(y), 1, 1).data;
+  const hex = '#' + [px[0],px[1],px[2]].map(v => v.toString(16).padStart(2,'0')).join('');
+  setStrokeColor(hex);
+}
+
+// ── SHAPE DRAWING ──────────────────────────────────────────────────────────
+function drawShape(context, x1, y1, x2, y2, type, stroke, fill, filled, op, size) {
+  context.save();
+  context.globalAlpha = op;
+  context.strokeStyle = stroke;
+  context.fillStyle = fill;
+  context.lineWidth = size;
+  context.lineCap = 'round';
+  context.lineJoin = 'round';
+  context.beginPath();
+
+  if (type === 'rect') {
+    const rx = Math.min(x1,x2), ry = Math.min(y1,y2);
+    const rw = Math.abs(x2-x1), rh = Math.abs(y2-y1);
+    context.rect(rx, ry, rw, rh);
+  } else if (type === 'ellipse') {
+    const cx = (x1+x2)/2, cy = (y1+y2)/2;
+    const rx = Math.abs(x2-x1)/2, ry = Math.abs(y2-y1)/2;
+    context.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2);
+  } else if (type === 'triangle') {
+    context.moveTo((x1+x2)/2, y1);
+    context.lineTo(x2, y2);
+    context.lineTo(x1, y2);
+    context.closePath();
+  } else if (type === 'star') {
+    const cx=(x1+x2)/2, cy=(y1+y2)/2;
+    const outerR=Math.min(Math.abs(x2-x1),Math.abs(y2-y1))/2;
+    const innerR=outerR*0.4;
+    for (let i=0;i<10;i++) {
+      const angle = (i*Math.PI/5) - Math.PI/2;
+      const r = i%2===0 ? outerR : innerR;
+      const px2 = cx + Math.cos(angle)*r;
+      const py2 = cy + Math.sin(angle)*r;
+      i===0 ? context.moveTo(px2,py2) : context.lineTo(px2,py2);
+    }
+    context.closePath();
+  }
+
+  if (filled) context.fill();
+  context.stroke();
+  context.restore();
+}
+
+// ── LASSO ─────────────────────────────────────────────────────────────────
+function drawLasso() {
+  ovCtx.clearRect(0, 0, W, H);
+  if (lassoPoints.length < 2) return;
+  ovCtx.save();
+  ovCtx.strokeStyle = '#e94560';
+  ovCtx.lineWidth = 1.5;
+  ovCtx.setLineDash([5, 4]);
+  ovCtx.beginPath();
+  ovCtx.moveTo(lassoPoints[0].x, lassoPoints[0].y);
+  for (let i=1;i<lassoPoints.length;i++) ovCtx.lineTo(lassoPoints[i].x, lassoPoints[i].y);
+  if (lassoActive) ovCtx.closePath();
+  ovCtx.stroke();
+  ovCtx.restore();
+}
+
+function lassoRect() {
+  if (!lassoPoints.length) return null;
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  for (const p of lassoPoints) {
+    if(p.x<minX)minX=p.x; if(p.y<minY)minY=p.y;
+    if(p.x>maxX)maxX=p.x; if(p.y>maxY)maxY=p.y;
+  }
+  return { x:Math.floor(minX), y:Math.floor(minY),
+           w:Math.ceil(maxX-minX), h:Math.ceil(maxY-minY) };
+}
+
+function clearLasso() {
+  lassoPoints = [];
+  lassoActive = false;
+  lassoPasting = false;
+  ovCtx.clearRect(0, 0, W, H);
+}
+
+document.getElementById('lasso-copy').addEventListener('click', () => {
+  const r = lassoRect();
+  if (!r || r.w<=0 || r.h<=0) return;
+  const tmp = document.createElement('canvas');
+  tmp.width=W; tmp.height=H;
+  const tCtx=tmp.getContext('2d');
+  tCtx.drawImage(bgCanvas,0,0); tCtx.drawImage(mainCanvas,0,0);
+  lassoClipboard = { data: tCtx.getImageData(r.x,r.y,r.w,r.h), x:r.x, y:r.y, w:r.w, h:r.h };
+});
+document.getElementById('lasso-cut').addEventListener('click', () => {
+  const r = lassoRect();
+  if (!r || r.w<=0 || r.h<=0) return;
+  const tmp=document.createElement('canvas');
+  tmp.width=W; tmp.height=H;
+  const tCtx=tmp.getContext('2d');
+  tCtx.drawImage(bgCanvas,0,0); tCtx.drawImage(mainCanvas,0,0);
+  lassoClipboard = { data: tCtx.getImageData(r.x,r.y,r.w,r.h), x:r.x, y:r.y, w:r.w, h:r.h };
+  saveState();
+  ctx.clearRect(r.x,r.y,r.w,r.h);
+  clearLasso();
+});
+document.getElementById('lasso-delete').addEventListener('click', () => {
+  const r = lassoRect();
+  if (!r || r.w<=0 || r.h<=0) return;
+  saveState();
+  ctx.clearRect(r.x,r.y,r.w,r.h);
+  clearLasso();
+});
+document.getElementById('lasso-deselect').addEventListener('click', clearLasso);
+document.getElementById('lasso-paste').addEventListener('click', () => {
+  if (!lassoClipboard) return;
+  saveState();
+  const tmp=document.createElement('canvas');
+  tmp.width=lassoClipboard.w; tmp.height=lassoClipboard.h;
+  tmp.getContext('2d').putImageData(lassoClipboard.data,0,0);
+  ctx.drawImage(tmp, lassoClipboard.x+20, lassoClipboard.y+20);
+});
+
+// ── TEXT TOOL ──────────────────────────────────────────────────────────────
+function getFontString() {
+  const size = document.getElementById('font-size-input').value;
+  const family = document.getElementById('font-family-select').value;
+  const bold = document.getElementById('text-bold').checked ? 'bold ' : '';
+  const italic = document.getElementById('text-italic').checked ? 'italic ' : '';
+  return `${italic}${bold}${size}px ${family}`;
+}
+
+function commitText() {
+  if (!textActive) return;
+  const text = textOverlay.value;
+  if (text.trim()) {
+    saveState();
+    ctx.save();
+    ctx.fillStyle = strokeColor;
+    ctx.globalAlpha = opacity;
+    ctx.font = getFontString();
+    ctx.textBaseline = 'top';
+    const lines = text.split('\n');
+    const fontSize = parseInt(document.getElementById('font-size-input').value);
+    lines.forEach((line, i) => {
+      ctx.fillText(line, textPos.x, textPos.y + i * fontSize * 1.3);
+    });
+    ctx.restore();
+  }
+  textOverlay.style.display = 'none';
+  textOverlay.value = '';
+  textActive = false;
+}
+
+function placeTextBox(x, y) {
+  commitText();
+  textPos = { x, y };
+  const rect = overlayCanvas.getBoundingClientRect();
+  const scaleX = rect.width / W;
+  const scaleY = rect.height / H;
+  const containerRect = container.getBoundingClientRect();
+
+  textOverlay.style.left = (x * scaleX) + 'px';
+  textOverlay.style.top  = (y * scaleY) + 'px';
+  textOverlay.style.fontSize = document.getElementById('font-size-input').value + 'px';
+  textOverlay.style.fontFamily = document.getElementById('font-family-select').value;
+  textOverlay.style.fontWeight = document.getElementById('text-bold').checked ? 'bold' : 'normal';
+  textOverlay.style.fontStyle  = document.getElementById('text-italic').checked ? 'italic' : 'normal';
+  textOverlay.style.color = strokeColor;
+  textOverlay.style.display = 'block';
+  textOverlay.style.width = '200px';
+  textOverlay.style.height = 'auto';
+  textOverlay.focus();
+  textActive = true;
+}
+
+// Reposition text overlay relative to canvas-wrap
+const canvasWrap = document.getElementById('canvas-wrap');
+// The text overlay sits inside canvas-wrap (absolutely positioned relative to container)
+container.style.position = 'relative';
+container.appendChild(textOverlay);
+textOverlay.style.position = 'absolute';
+
+textOverlay.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { textOverlay.value=''; commitText(); }
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commitText(); }
+});
+
+// ── POINTER EVENTS ─────────────────────────────────────────────────────────
+overlayCanvas.addEventListener('mousedown', onDown);
+overlayCanvas.addEventListener('mousemove', onMove);
+overlayCanvas.addEventListener('mouseup',   onUp);
+overlayCanvas.addEventListener('mouseleave', onUp);
+overlayCanvas.addEventListener('contextmenu', e => e.preventDefault());
+
+function onDown(e) {
+  const pos = getPos(e);
+  const right = e.button === 2;
+
+  if (tool === 'eyedropper') { pickColor(pos.x, pos.y); return; }
+  if (tool === 'bucket') {
+    saveState();
+    floodFill(pos.x, pos.y, right ? fillColor : strokeColor);
+    return;
+  }
+  if (tool === 'text') { placeTextBox(pos.x, pos.y); return; }
+
+  dragging = true;
+  dragStart = pos;
+
+  if (tool === 'pencil' || tool === 'eraser') {
+    saveState();
+    lastPoint = pos;
+    if (tool === 'eraser') {
+      ctx.save();
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.fillStyle = 'rgba(0,0,0,1)';
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, brushSize/2, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    } else {
+      drawPencilLine(pos, pos, right ? fillColor : strokeColor, brushSize, opacity);
+    }
+  }
+
+  if (tool === 'lasso') {
+    if (lassoActive) { clearLasso(); }
+    lassoPoints = [pos];
+    lassoActive = false;
+    drawLasso();
+  }
+}
+
+function onMove(e) {
+  const pos = getPos(e);
+  statusPos.textContent = `X: ${Math.floor(pos.x)}  Y: ${Math.floor(pos.y)}`;
+
+  if (!dragging) return;
+
+  if (tool === 'pencil') {
+    const color = e.buttons === 2 ? fillColor : strokeColor;
+    drawPencilLine(lastPoint, pos, color, brushSize, opacity);
+    lastPoint = pos;
+  } else if (tool === 'eraser') {
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.strokeStyle = 'rgba(0,0,0,1)';
+    ctx.lineWidth = brushSize;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(lastPoint.x, lastPoint.y);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+    ctx.restore();
+    lastPoint = pos;
+  } else if (tool === 'line') {
+    ovCtx.clearRect(0, 0, W, H);
+    ovCtx.save();
+    ovCtx.globalAlpha = opacity;
+    ovCtx.strokeStyle = strokeColor;
+    ovCtx.lineWidth = brushSize;
+    ovCtx.lineCap = 'round';
+    ovCtx.beginPath();
+    ovCtx.moveTo(dragStart.x, dragStart.y);
+    ovCtx.lineTo(pos.x, pos.y);
+    ovCtx.stroke();
+    ovCtx.restore();
+  } else if (tool === 'shape') {
+    ovCtx.clearRect(0, 0, W, H);
+    drawShape(ovCtx, dragStart.x, dragStart.y, pos.x, pos.y,
+              shapeType, strokeColor, fillColor, fillShape, opacity, brushSize);
+  } else if (tool === 'lasso') {
+    lassoPoints.push(pos);
+    drawLasso();
+  }
+}
+
+function onUp(e) {
+  if (!dragging) return;
+  dragging = false;
+  const pos = e.type === 'mouseleave' ? dragStart : getPos(e);
+
+  if (tool === 'line') {
+    ovCtx.clearRect(0, 0, W, H);
+    saveState();
+    ctx.save();
+    ctx.globalAlpha = opacity;
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = brushSize;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(dragStart.x, dragStart.y);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+    ctx.restore();
+  } else if (tool === 'shape') {
+    ovCtx.clearRect(0, 0, W, H);
+    saveState();
+    drawShape(ctx, dragStart.x, dragStart.y, pos.x, pos.y,
+              shapeType, strokeColor, fillColor, fillShape, opacity, brushSize);
+  } else if (tool === 'lasso') {
+    lassoActive = true;
+    lassoPoints.push(lassoPoints[0]); // close path
+    drawLasso();
+  }
+
+  lastPoint = null;
+}
+
+// ── KEYBOARD SHORTCUTS ─────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target === textOverlay) return;
+  const key = e.key.toLowerCase();
+  const map = { p:'pencil', e:'eraser', b:'bucket', l:'line', s:'shape', t:'text', i:'eyedropper', a:'lasso' };
+  if (map[key]) selectTool(map[key]);
+  if (e.ctrlKey && key === 'z') { e.preventDefault(); undo(); }
+  if (e.ctrlKey && key === 'y') { e.preventDefault(); redo(); }
+  if (e.ctrlKey && key === 's') { e.preventDefault(); document.getElementById('btn-save').click(); }
+  if (key === 'escape' && tool === 'text') commitText();
+  if (key === 'escape' && tool === 'lasso') clearLasso();
+  if (key === 'delete' && tool === 'lasso' && lassoActive) {
+    document.getElementById('lasso-delete').click();
+  }
+});
+
+// ── INIT ───────────────────────────────────────────────────────────────────
+selectTool('pencil');
+document.getElementById('status-size').textContent = `Canvas: ${W}×${H}`;
+</script>
+</body>
+</html>
